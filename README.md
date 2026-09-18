@@ -60,15 +60,15 @@ A premium, universal userscript for [YouTube Music](https://music.youtube.com) t
    - **Firefox**: [Tampermonkey](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/) or [Violentmonkey](https://addons.mozilla.org/en-US/firefox/addon/violentmonkey/)
 2. Install the userscript:
    - **From GitHub**: Click **[ytm-glass-lyrics.user.js](https://raw.githubusercontent.com/ankrypht/ytm-glass-lyrics/main/ytm-glass-lyrics.user.js)** and choose **Install**.
-   - _(Optional)_ **From Greasy Fork**: Search for `YouTube Music Glass Synced Lyrics & PiP` on [Greasy Fork](https://greasyfork.org/).
+   - **From Greasy Fork**: Search for `YouTube Music Glass Synced Lyrics & PiP` on [Greasy Fork](https://greasyfork.org/).
 3. Open [music.youtube.com](https://music.youtube.com) and play any track. The floating glass lyrics card will appear in the lower-right corner.
 
-### Option 2: Safari Setup via 'Userscripts' Extension
+### Option 2: Manual Installation (Copy-Paste Method)
 
-1. Install **Userscripts** from the Mac App Store.
-2. In Safari, open **Settings → Extensions** and enable **Userscripts**.
-3. Grant **Userscripts** permission to access `music.youtube.com`.
-4. Click the Userscripts extension icon in your Safari toolbar, click **+**, and paste the contents of `ytm-glass-lyrics.user.js` (or save the file in your Userscripts folder).
+1. Install a userscript manager for your browser (see list in Option 1).
+2. Open the userscript manager's dashboard and click "Create a new script".
+3. Copy the contents of `ytm-glass-lyrics.user.js` and paste them into the editor.
+4. Save the script.
 5. Refresh YouTube Music.
 
 ---
