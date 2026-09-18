@@ -60,7 +60,7 @@ A premium, universal userscript for [YouTube Music](https://music.youtube.com) t
    - **Firefox**: [Tampermonkey](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/) or [Violentmonkey](https://addons.mozilla.org/en-US/firefox/addon/violentmonkey/)
 2. Install the userscript:
    - **From GitHub**: Click **[ytm-glass-lyrics.user.js](https://raw.githubusercontent.com/ankrypht/ytm-glass-lyrics/main/ytm-glass-lyrics.user.js)** and choose **Install**.
-   - **From Greasy Fork**: Search for `YouTube Music Glass Synced Lyrics & PiP` on [Greasy Fork](https://greasyfork.org/).
+   - **From Greasy Fork**: [Install on Greasy Fork](https://greasyfork.org/en/scripts/596372-youtube-music-glass-synced-lyrics-pip).
 3. Open [music.youtube.com](https://music.youtube.com) and play any track. The floating glass lyrics card will appear in the lower-right corner.
 
 ### Option 2: Manual Installation (Copy-Paste Method)
