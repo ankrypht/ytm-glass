@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         YouTube Music Glass Synced Lyrics & PiP
 // @namespace    https://github.com/ankrypht/ytm-glass-lyrics
-// @version      1.2.1
+// @version      1.2.2
 // @description  Apple Music-style glass synced lyrics & native Picture-in-Picture for YouTube Music on Safari (macOS).
 // @author       ankrypht
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/ankrypht/ytm-glass-lyrics
 // @supportURL   https://github.com/ankrypht/ytm-glass-lyrics/issues
 // @icon         https://music.youtube.com/img/favicon_144.png
+// @compatible   safari macOS (tested with Userscripts extension by Justin Wasack)
 // @match        https://music.youtube.com/*
 // @grant        GM_xmlhttpRequest
 // @connect      lrclib.net
@@ -1413,8 +1414,8 @@
     renderSearchingState();
 
     const headers = {
-      'User-Agent': 'YTM-Glass-Lyrics/1.2 (Mac Safari PWA Userscript; https://github.com/ankrypht/ytm-glass-lyrics)',
-      'Lrclib-Client': 'YTM-Glass-Lyrics/1.2'
+      'User-Agent': 'YTM-Glass-Lyrics/1.2.2 (Mac Safari PWA Userscript; https://github.com/ankrypht/ytm-glass-lyrics)',
+      'Lrclib-Client': 'YTM-Glass-Lyrics/1.2.2'
     };
 
     // Step 1: Direct exact match (/api/get) without forcing duration
