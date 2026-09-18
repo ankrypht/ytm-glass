@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Music Glass Synced Lyrics & PiP
 // @namespace    https://github.com/ankrypht/ytm-glass-lyrics
-// @version      1.2.0
+// @version      1.2.1
 // @description  Apple Music-style glass synced lyrics & native Picture-in-Picture for YouTube Music on Safari (macOS).
 // @author       ankrypht
 // @license      GPL-3.0-or-later
