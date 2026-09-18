@@ -1,9 +1,10 @@
 # YouTube Music Glass Synced Lyrics & PiP 🎵✨
 
+[![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-Install-red.svg?logo=greasemonkey)](https://greasyfork.org/en/scripts/596372-youtube-music-glass-synced-lyrics-pip)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20(Safari)-black.svg?logo=apple)](https://github.com/ankrypht/ytm-glass-lyrics)
 [![Extension](https://img.shields.io/badge/Extension-Userscripts%20by%20Justin%20Wasack-orange.svg)](https://apps.apple.com/app/userscripts/id1463298887)
-[![Version](https://img.shields.io/badge/Version-1.2.0-red.svg)](https://github.com/ankrypht/ytm-glass-lyrics)
+[![Version](https://img.shields.io/badge/Version-1.2.0-blue.svg)](https://github.com/ankrypht/ytm-glass-lyrics)
 
 An Apple Music-inspired synchronized lyrics and **Canvas Picture-in-Picture (PiP)** userscript built specifically for **macOS** with **Safari** (and Safari Web Apps / PWA) using the **[Userscripts](https://apps.apple.com/app/userscripts/id1463298887)** extension by Justin Wasack.
 
@@ -53,21 +54,35 @@ An Apple Music-inspired synchronized lyrics and **Canvas Picture-in-Picture (PiP
 
 ## 🚀 Setup & Installation (Safari on macOS)
 
-1. **Install the Userscripts Extension**:
-   - Download and install **[Userscripts](https://apps.apple.com/app/userscripts/id1463298887)** from the Mac App Store.
-2. **Enable Userscripts in Safari**:
-   - Open Safari.
-   - Go to **Safari → Settings (⌘,) → Extensions**.
-   - Check the box next to **Userscripts**.
-   - Click **Permissions** and set permissions for `music.youtube.com` to **Always Allow**.
-3. **Add the Script**:
-   - Navigate to [music.youtube.com](https://music.youtube.com) in Safari.
-   - Click the **Userscripts** icon (`</>`) in your Safari toolbar.
-   - Click the **+** (New Script) button.
-   - Copy and paste the entire contents of **[ytm-glass-lyrics.user.js](https://raw.githubusercontent.com/ankrypht/ytm-glass-lyrics/main/ytm-glass-lyrics.user.js)** into the editor.
-   - Press <kbd>⌘ Command</kbd> + <kbd>S</kbd> to save.
-4. **Enjoy**:
-   - Play any song on YouTube Music. The frosted glass card will appear in the lower-right corner!
+### Step 1: Install & Enable 'Userscripts' Extension
+1. Download and install **[Userscripts](https://apps.apple.com/app/userscripts/id1463298887)** from the Mac App Store.
+2. Open Safari and navigate to **Safari → Settings (⌘,) → Extensions**.
+3. Check the box to enable **Userscripts**.
+4. Click **Permissions** and ensure permissions for `music.youtube.com` are set to **Always Allow**.
+
+---
+
+### Step 2: Install the Script
+
+#### Method 1: Greasy Fork (Recommended) ⭐
+> [!TIP]
+> **Why Greasy Fork is Recommended over GitHub:**
+> Installing via Greasy Fork automatically bundles update metadata (`@updateURL` and `@downloadURL`). This allows the **Userscripts** extension to automatically detect, notify, and install updates in the background whenever a new version is released. 
+> 
+> Direct installs from raw GitHub links do not automatically register update hooks in the Userscripts extension, requiring manual re-downloads when new features are added.
+
+1. Go to the script page on **[Greasy Fork](https://greasyfork.org/en/scripts/596372-youtube-music-glass-synced-lyrics-pip)**.
+2. Click the green **Install this script** button.
+3. The Userscripts extension prompt will appear. Click **Install**.
+4. Open [music.youtube.com](https://music.youtube.com) and play any track. The frosted glass card will appear in the bottom-right corner!
+
+#### Method 2: Direct Install from GitHub (Alternative)
+If you prefer installing directly from source:
+1. Navigate to [music.youtube.com](https://music.youtube.com) in Safari.
+2. Click the **Userscripts** icon (`</>`) in your Safari toolbar.
+3. Click the **+** (New Script) button.
+4. Copy and paste the entire contents of **[ytm-glass-lyrics.user.js](https://raw.githubusercontent.com/ankrypht/ytm-glass-lyrics/main/ytm-glass-lyrics.user.js)** into the editor.
+5. Press <kbd>⌘ Command</kbd> + <kbd>S</kbd> to save.
 
 *(Optional: If you use YouTube Music as a Safari Web App via **File → Add to Dock**, ensure the Userscripts extension is allowed in your Web App profile).*
 
