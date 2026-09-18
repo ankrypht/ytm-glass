@@ -41,11 +41,11 @@ A premium, universal userscript for [YouTube Music](https://music.youtube.com) t
 
 ## 🌐 Compatibility Matrix
 
-| Operating System | Supported Browsers | Supported Userscript Runners |
-| :--- | :--- | :--- |
-| **macOS** | Safari, Chrome, Brave, Edge, Firefox, Opera, Vivaldi | Userscripts (by Justin Wasack), Tampermonkey, Violentmonkey, Stay |
-| **Windows** | Chrome, Brave, Microsoft Edge, Firefox, Opera, Vivaldi | Tampermonkey, Violentmonkey, Greasemonkey 4 |
-| **Linux** | Chrome, Chromium, Brave, Firefox, Edge | Tampermonkey, Violentmonkey, FireMonkey |
+| Operating System | Supported Browsers                                     | Supported Userscript Runners                                      |
+| :--------------- | :----------------------------------------------------- | :---------------------------------------------------------------- |
+| **macOS**        | Safari, Chrome, Brave, Edge, Firefox, Opera, Vivaldi   | Userscripts (by Justin Wasack), Tampermonkey, Violentmonkey, Stay |
+| **Windows**      | Chrome, Brave, Microsoft Edge, Firefox, Opera, Vivaldi | Tampermonkey, Violentmonkey, Greasemonkey 4                       |
+| **Linux**        | Chrome, Chromium, Brave, Firefox, Edge                 | Tampermonkey, Violentmonkey, FireMonkey                           |
 
 ---
 
@@ -60,7 +60,7 @@ A premium, universal userscript for [YouTube Music](https://music.youtube.com) t
    - **Firefox**: [Tampermonkey](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/) or [Violentmonkey](https://addons.mozilla.org/en-US/firefox/addon/violentmonkey/)
 2. Install the userscript:
    - **From GitHub**: Click **[ytm-glass-lyrics.user.js](https://raw.githubusercontent.com/ankrypht/ytm-glass-lyrics/main/ytm-glass-lyrics.user.js)** and choose **Install**.
-   - *(Optional)* **From Greasy Fork**: Search for `YouTube Music Glass Synced Lyrics & PiP` on [Greasy Fork](https://greasyfork.org/).
+   - _(Optional)_ **From Greasy Fork**: Search for `YouTube Music Glass Synced Lyrics & PiP` on [Greasy Fork](https://greasyfork.org/).
 3. Open [music.youtube.com](https://music.youtube.com) and play any track. The floating glass lyrics card will appear in the lower-right corner.
 
 ### Option 2: Safari Setup via 'Userscripts' Extension
@@ -75,13 +75,13 @@ A premium, universal userscript for [YouTube Music](https://music.youtube.com) t
 
 ## ⌨️ Keyboard Shortcuts
 
-| Action | macOS Hotkey | Windows / Linux Hotkey |
-| :--- | :--- | :--- |
-| **Toggle Picture-in-Picture** | <kbd>⌥ Option</kbd> + <kbd>P</kbd> | <kbd>Alt</kbd> + <kbd>P</kbd> *(or <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd>)* |
-| **Seek Forward 10 Seconds** | <kbd>⌥ Option</kbd> + <kbd>→</kbd> | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>→</kbd> *(or <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>→</kbd>)* |
-| **Seek Backward 10 Seconds** | <kbd>⌥ Option</kbd> + <kbd>←</kbd> | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>←</kbd> *(or <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>←</kbd>)* |
-| **Exit Expanded / Theatre Mode** | <kbd>Esc</kbd> | <kbd>Esc</kbd> |
-| **Minimize / Restore Card** | Double-click header | Double-click header |
+| Action                           | macOS Hotkey                       | Windows / Linux Hotkey                                                                                  |
+| :------------------------------- | :--------------------------------- | :------------------------------------------------------------------------------------------------------ |
+| **Toggle Picture-in-Picture**    | <kbd>⌥ Option</kbd> + <kbd>P</kbd> | <kbd>Alt</kbd> + <kbd>P</kbd> _(or <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd>)_                   |
+| **Seek Forward 10 Seconds**      | <kbd>⌥ Option</kbd> + <kbd>→</kbd> | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>→</kbd> _(or <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>→</kbd>)_ |
+| **Seek Backward 10 Seconds**     | <kbd>⌥ Option</kbd> + <kbd>←</kbd> | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>←</kbd> _(or <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>←</kbd>)_ |
+| **Exit Expanded / Theatre Mode** | <kbd>Esc</kbd>                     | <kbd>Esc</kbd>                                                                                          |
+| **Minimize / Restore Card**      | Double-click header                | Double-click header                                                                                     |
 
 > [!NOTE]
 > On Windows and Linux, seeking shortcuts use `Alt + Shift + Arrow` or `Ctrl + Alt + Arrow` to ensure the script never intercepts your standard browser history navigation (`Alt + Left/Right` = Back/Forward).
@@ -108,7 +108,9 @@ Click the gear icon (**⚙**) on the floating card header to access user prefere
 ## ❓ Troubleshooting & FAQ
 
 ### Firefox: PiP Button Says "Picture-in-Picture API is disabled"
+
 Desktop Firefox does not expose the W3C programmatic `requestPictureInPicture` API to web pages by default (it uses its own browser overlay button).
+
 - **To enable native video PiP API in Firefox**:
   1. Open a new tab and go to `about:config`.
   2. Accept the warning prompt.
@@ -117,35 +119,24 @@ Desktop Firefox does not expose the W3C programmatic `requestPictureInPicture` A
   5. Refresh YouTube Music.
 
 ### Brave Browser: Canvas Colors or PiP Not Loading
+
 Brave Shields includes a fingerprinting protection feature ("farbling") that randomizes canvas pixel readouts.
+
 - If album art colors appear muted or canvas PiP fails, click the Brave Shields lion icon in the address bar and set **Fingerprinting** to **Standard** (or disable Shields specifically for `music.youtube.com`).
 
 ### No Synced Lyrics Found for a Song
+
 If a song is an instrumental or has not yet been transcribed on LRCLIB:
+
 - The card displays an "Instrumental or No Lyrics" state.
 - If static unsynced lyrics are available, the script renders them in clean plain-text format.
 - Click **↻ Retry Lyrics** to clear the cache and force a new lookup.
 
 ---
 
-## 📦 Publishing to Greasy Fork (Quick Guide)
-
-1. Create a free account at [Greasy Fork](https://greasyfork.org/).
-2. Click **Post a script**.
-3. Copy the entire contents of [ytm-glass-lyrics.user.js](file:///Users/ankushsarkar/Programming/YTM/ytm-glass-lyrics.user.js) and paste it into the code editor.
-4. Greasy Fork will automatically parse the metadata header:
-   - **Name**: `YouTube Music Glass Synced Lyrics & PiP`
-   - **Description**: Autopopulated from `@description`
-   - **License**: `GPL-3.0-or-later`
-   - **Home Page**: `https://github.com/ankrypht/ytm-glass-lyrics`
-5. Paste this `README.md` content into the **Description** (Markdown) tab.
-6. Click **Post Script**!
-
----
-
 ## 📄 License
 
-This project is licensed under the **GNU General Public License v3.0** (GPL-3.0). See the [LICENSE](file:///Users/ankushsarkar/Programming/YTM/LICENSE) file for details.
+This project is licensed under the **GNU General Public License v3.0** (GPL-3.0). See the [LICENSE](./LICENSE) file for details.
 
 ---
 
