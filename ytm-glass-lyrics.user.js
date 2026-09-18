@@ -2,88 +2,21 @@
 // @name         YouTube Music Glass Synced Lyrics & PiP
 // @namespace    https://github.com/ankrypht/ytm-glass-lyrics
 // @version      1.2.0
-// @description  Universal synchronized lyrics with Apple Music-style glass UI and smooth canvas Picture-in-Picture for YouTube Music.
+// @description  Apple Music-style glass synced lyrics & native Picture-in-Picture for YouTube Music on Safari (macOS).
 // @author       ankrypht
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/ankrypht/ytm-glass-lyrics
 // @supportURL   https://github.com/ankrypht/ytm-glass-lyrics/issues
 // @icon         https://music.youtube.com/img/favicon_144.png
 // @match        https://music.youtube.com/*
-// @noframes
 // @grant        GM_xmlhttpRequest
-// @grant        GM.xmlHttpRequest
 // @connect      lrclib.net
-// @connect      lh3.googleusercontent.com
-// @connect      yt3.ggpht.com
-// @connect      i.ytimg.com
-// @connect      googleusercontent.com
 // @connect      *
 // @run-at       document-end
 // ==/UserScript==
 
 (function () {
   'use strict';
-
-  // 0. Top-Level Frame Guard (Prevents execution inside hidden/sandboxed YouTube Music iframes)
-  if (window.top !== window.self) return;
-
-  // Platform & Browser Environment Detection
-  const isMac = (navigator.platform?.toUpperCase().includes('MAC') || navigator.userAgent.includes('Mac'));
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-  const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
-
-  // Cross-Runner Network Abstraction (Tampermonkey, Violentmonkey, Greasemonkey 4, Userscripts, Stay)
-  function crossRequest(options) {
-    if (typeof GM_xmlhttpRequest === 'function') {
-      return GM_xmlhttpRequest(options);
-    }
-    if (typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function') {
-      return GM.xmlHttpRequest(options);
-    }
-    // Fallback to fetch for environments without GM XHR APIs
-    if (typeof fetch === 'function') {
-      const fetchHeaders = new Headers(options.headers || {});
-      const controller = new AbortController();
-      const signal = controller.signal;
-
-      let timeoutTimer = null;
-      if (options.timeout) {
-        timeoutTimer = setTimeout(() => {
-          controller.abort();
-          if (options.ontimeout) options.ontimeout({ status: 0 });
-        }, options.timeout);
-      }
-
-      fetch(options.url, {
-        method: options.method || 'GET',
-        headers: fetchHeaders,
-        signal: signal,
-        mode: 'cors'
-      })
-      .then(async (res) => {
-        if (timeoutTimer) clearTimeout(timeoutTimer);
-        const headersStr = Array.from(res.headers.entries()).map(([k, v]) => `${k}: ${v}`).join('\r\n');
-        if (options.responseType === 'blob') {
-          const blob = await res.blob();
-          if (options.onload) options.onload({ status: res.status, response: blob, responseHeaders: headersStr, responseText: '' });
-        } else {
-          const text = await res.text();
-          if (options.onload) options.onload({ status: res.status, responseText: text, response: text, responseHeaders: headersStr });
-        }
-      })
-      .catch((err) => {
-        if (timeoutTimer) clearTimeout(timeoutTimer);
-        if (err.name !== 'AbortError' && options.onerror) {
-          options.onerror(err);
-        }
-      });
-
-      return { abort: () => controller.abort() };
-    }
-
-    if (options.onerror) options.onerror({ error: 'No HTTP request mechanism available' });
-    return null;
-  }
 
   // 1. Persistent Configuration
   const PREFS_KEY = 'ytm_lyrics_custom_prefs';
@@ -168,6 +101,7 @@
     lyricsMemoryCache.set(key, data);
     try {
       const obj = {};
+      // Keep most recent entries
       const entries = Array.from(lyricsMemoryCache.entries()).slice(-MAX_PERSISTENT_ENTRIES);
       entries.forEach(([k, v]) => { obj[k] = v; });
       localStorage.setItem(PERSISTENT_CACHE_KEY, JSON.stringify(obj));
@@ -198,33 +132,20 @@
     return colorStr;
   }
 
-  // Cross-Platform Typography Fallbacks (Identical Apple rendering on macOS/iOS, elegant fallbacks on Windows/Linux)
   function getCanvasFont(weight, size) {
     const f = prefs.fontFamily;
-    if (f === 'rounded') {
-      return `${weight} ${size}px "SF Pro Rounded", "Quicksand", "Comfortaa", "Nunito", system-ui, sans-serif`;
-    }
-    if (f === 'mono') {
-      return `${weight} ${size}px "SF Mono", Menlo, Monaco, Consolas, "Cascadia Code", "Courier New", monospace`;
-    }
-    if (f === 'serif') {
-      return `${weight} ${size}px Georgia, "Times New Roman", "New York", serif`;
-    }
-    return `${weight} ${size}px "SF Pro Display", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+    if (f === 'rounded') return `${weight} ${size}px "SF Pro Rounded", system-ui, sans-serif`;
+    if (f === 'mono') return `${weight} ${size}px "SF Mono", Menlo, monospace`;
+    if (f === 'serif') return `${weight} ${size}px Georgia, "Times New Roman", serif`;
+    return `${weight} ${size}px system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif`;
   }
 
   function getCSSFont() {
     const f = prefs.fontFamily;
-    if (f === 'rounded') {
-      return '"SF Pro Rounded", "Quicksand", "Comfortaa", "Nunito", system-ui, sans-serif';
-    }
-    if (f === 'mono') {
-      return '"SF Mono", Menlo, Monaco, Consolas, "Cascadia Code", "Courier New", monospace';
-    }
-    if (f === 'serif') {
-      return 'Georgia, "Times New Roman", "New York", serif';
-    }
-    return '"SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+    if (f === 'rounded') return '"SF Pro Rounded", system-ui, sans-serif';
+    if (f === 'mono') return '"SF Mono", Menlo, monospace';
+    if (f === 'serif') return 'Georgia, "Times New Roman", serif';
+    return 'system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif';
   }
 
   function formatTime(seconds) {
@@ -267,12 +188,14 @@
     if (!rawTitle) return '';
     let t = rawTitle;
 
+    // If title begins with "Artist - Song", strip the redundant artist prefix
     if (artist) {
       const artEscaped = artist.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const prefixRegex = new RegExp('^' + artEscaped + '\\s*-\\s*', 'i');
       t = t.replace(prefixRegex, '');
     }
 
+    // Iteratively strip bracketed tags: (Official Music Video), [Lyric Video], (feat. ...), [4K], etc.
     const bracketRegex = /\s*[\(\[][^()\[\]]*(?:official|music\s*video|audio|video|lyric|remaster|deluxe|edition|visualizer|live|feat\.?|ft\.?|performance|hd|4k|prod\.)[^()\[\]]*[\)\]]/gi;
     let prev;
     do {
@@ -280,8 +203,13 @@
       t = t.replace(bracketRegex, '');
     } while (t !== prev);
 
+    // Strip trailing hyphen descriptors e.g. " - Remastered 2011", " - Official Video"
     t = t.replace(/\s*-\s*(?:remastered(?:\s*\d+)?|radio\s*edit|live(?:\s*at\s*.*)?|single\s*version|bonus\s*track|official\s*(?:music\s*)?video|official\s*audio|official\s*visualizer|visualizer|lyric\s*video|lyrics?).*/gi, '');
+
+    // Strip trailing unbracketed "feat. XYZ" / "ft. XYZ"
     t = t.replace(/\s*(?:feat\.?|ft\.?)\s+.*/gi, '');
+
+    // Normalize quotes & trim
     t = t.replace(/["“”'‘’]/g, '').trim();
     return t;
   }
@@ -319,12 +247,8 @@
 
   // 3. Palette Extraction with Caching & Error Safety
   function extractAlbumPalette(imgUrl) {
-    if (!prefs.syncAlbumArt || !imgUrl) {
-      activeTheme = {
-        accent: prefs.accentColor,
-        bgStart: prefs.bgStart,
-        bgEnd: prefs.bgEnd
-      };
+    if (!imgUrl || !prefs.syncAlbumArt) {
+      activeTheme = { accent: prefs.accentColor, bgStart: prefs.bgStart, bgEnd: prefs.bgEnd };
       applyTheme();
       drawPiPFrame();
       return;
@@ -341,7 +265,7 @@
     }
 
     const currentArtUrl = imgUrl;
-    crossRequest({
+    GM_xmlhttpRequest({
       method: 'GET',
       url: imgUrl,
       responseType: 'blob',
@@ -353,7 +277,7 @@
 
         img.onload = () => {
           URL.revokeObjectURL(blobUrl);
-          if (currentSong.artwork !== currentArtUrl) return;
+          if (currentSong.artwork !== currentArtUrl) return; // Stale artwork check
 
           try {
             const sc = document.createElement('canvas');
@@ -455,8 +379,6 @@
     if (typeof canvas.captureStream === 'function') {
       const stream = canvas.captureStream(30);
       pipVideo.srcObject = stream;
-      // Pre-warm playback so readyState >= 2 (HAVE_CURRENT_DATA) for Chromium PiP
-      pipVideo.play().catch(() => {});
     }
 
     let pauseDebounceTimer = null;
@@ -465,8 +387,7 @@
       clearTimeout(pauseDebounceTimer);
       isPipActive = false;
       // If closing PiP caused Safari to momentarily pause the main track in the background, auto-resume it!
-      // Only execute on Safari to prevent unintended unpausing in Chrome/Firefox
-      if (isSafari && Date.now() - lastPlayingTimestamp < 1500) {
+      if (Date.now() - lastPlayingTimestamp < 1500) {
         setTimeout(() => {
           const v = getYTMVideo();
           if (v && v.paused) {
@@ -497,6 +418,7 @@
     pipVideo.addEventListener('pause', () => {
       clearTimeout(pauseDebounceTimer);
       pauseDebounceTimer = setTimeout(() => {
+        // Only pause YTM if PiP is STILL open (user intentionally clicked Pause button, not ✕ close)
         const isInPip = (pipVideo.webkitPresentationMode === 'picture-in-picture') || (document.pictureInPictureElement === pipVideo);
         if (isPipActive && isInPip) {
           const video = getYTMVideo();
@@ -508,6 +430,7 @@
       }, 80);
     });
 
+    // When the user resumes playback via the PiP overlay Play button, ensure YTM playback resumes
     pipVideo.addEventListener('play', () => {
       clearTimeout(pauseDebounceTimer);
       if (!isPipActive) return;
@@ -520,6 +443,7 @@
   }
 
   function drawWrappedText(context, text, x, y, maxWidth, lineHeight) {
+    // Robust word-wrap supporting both spaced text and non-spaced CJK characters
     const words = text.split(' ');
     let lines = [];
     let currentLine = '';
@@ -534,6 +458,7 @@
           lines.push(currentLine);
           currentLine = '';
         }
+        // If single word exceeds maxWidth, break by characters
         if (context.measureText(word).width > maxWidth) {
           let charChunk = '';
           for (let c = 0; c < word.length; c++) {
@@ -553,6 +478,7 @@
     }
     if (currentLine) lines.push(currentLine);
 
+    // Safeguard: cap at max 3 lines to ensure zero vertical clipping with adjacent lyrics
     if (lines.length > 3) {
       lines = lines.slice(0, 3);
       lines[2] = lines[2].replace(/[.,;:!?\s]*$/, '…');
@@ -687,6 +613,7 @@
       const activeIdx = getActiveLyricIndex(currentTime);
 
       if (activeIdx === -1) {
+        // Track Intro: Before first lyric with clean solid accent glow
         ctx.save();
         ctx.fillStyle = curAccent;
         ctx.font = getCanvasFont('bold', 22);
@@ -709,6 +636,7 @@
           ctx.fillText(previewText2, 260, 335);
         }
       } else {
+        // Line -2 (Far previous lyric)
         if (activeIdx - 2 >= 0 && lyricsData[activeIdx - 2]) {
           ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
           ctx.font = getCanvasFont('normal', Math.max(13, curFontSize - 16));
@@ -716,6 +644,7 @@
           ctx.fillText(prevText2, 260, 135);
         }
 
+        // Line -1 (Immediate previous lyric)
         if (activeIdx - 1 >= 0 && lyricsData[activeIdx - 1]) {
           ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
           ctx.font = getCanvasFont('500', Math.max(15, curFontSize - 12));
@@ -723,6 +652,7 @@
           ctx.fillText(prevText, 260, 195);
         }
 
+        // Line 0 (Active lyric) - Centered at y = 265
         if (lyricsData[activeIdx]) {
           ctx.fillStyle = '#ffffff';
           ctx.font = getCanvasFont('bold', curFontSize);
@@ -732,6 +662,7 @@
           ctx.shadowBlur = 0;
         }
 
+        // Line +1 (Immediate upcoming lyric)
         if (activeIdx + 1 < lyricsData.length && lyricsData[activeIdx + 1]) {
           ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
           ctx.font = getCanvasFont('500', Math.max(15, curFontSize - 12));
@@ -739,6 +670,7 @@
           ctx.fillText(nextText, 260, 335);
         }
 
+        // Line +2 (Far upcoming lyric)
         if (activeIdx + 2 < lyricsData.length && lyricsData[activeIdx + 2]) {
           ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
           ctx.font = getCanvasFont('normal', Math.max(13, curFontSize - 16));
@@ -783,11 +715,13 @@
     ctx.fillText(formatTime(duration), barX + barW, barY + 22);
   }
 
-  // 6. Dual-Engine Render Loop
+  // 6. Battery-Optimized Dual-Engine Render Loop
   let lastDrawTime = 0;
   function startRenderLoop() {
     function render(now) {
+      // Only render continuous canvas frames when Picture-in-Picture is actively open
       if (isPipActive) {
+        // Cap to 30fps matching canvas.captureStream(30) to eliminate wasted ProMotion 120Hz frames
         if (!lastDrawTime || now - lastDrawTime >= 33) {
           lastDrawTime = now;
           drawPiPFrame();
@@ -797,7 +731,7 @@
     }
     requestAnimationFrame(render);
 
-    // Fallback interval for backgrounded tabs with active PiP
+    // Fallback interval for backgrounded Safari PWA with active PiP
     setInterval(() => {
       if (isPipActive && document.hidden) {
         drawPiPFrame();
@@ -805,34 +739,12 @@
     }, 75);
   }
 
-  // Toast Notification System for In-App Alerts
-  function showToast(msg, duration = 4500) {
-    const card = document.getElementById('ytm-glass-card') || document.body;
-    let toast = document.getElementById('ytm-glass-toast');
-    if (!toast) {
-      toast = document.createElement('div');
-      toast.id = 'ytm-glass-toast';
-      card.appendChild(toast);
-    }
-    toast.textContent = msg;
-    toast.classList.add('visible');
-    clearTimeout(toast._timer);
-    toast._timer = setTimeout(() => {
-      toast.classList.remove('visible');
-    }, duration);
-  }
-
-  async function triggerPiP() {
+  function triggerPiP() {
     if (!pipVideo) initPiPCanvas();
     drawPiPFrame();
-    try {
-      await pipVideo.play();
-    } catch (e) {}
+    pipVideo.play().catch(() => {});
 
-    const isInPip = (pipVideo.webkitPresentationMode && pipVideo.webkitPresentationMode === 'picture-in-picture') ||
-                    (document.pictureInPictureElement === pipVideo);
-
-    if (isInPip) {
+    if (document.pictureInPictureElement || (pipVideo.webkitPresentationMode && pipVideo.webkitPresentationMode === 'picture-in-picture')) {
       if (document.exitPictureInPicture) {
         document.exitPictureInPicture().catch(() => {});
       } else if (pipVideo.webkitSetPresentationMode) {
@@ -844,18 +756,13 @@
 
     isPipActive = true;
     if (typeof pipVideo.requestPictureInPicture === 'function') {
-      pipVideo.requestPictureInPicture().catch((err) => {
+      pipVideo.requestPictureInPicture().catch(() => {
         if (typeof pipVideo.webkitSetPresentationMode === 'function') {
           pipVideo.webkitSetPresentationMode('picture-in-picture');
-        } else {
-          console.warn('[YTM Glass] PiP request error:', err);
-          showToast('Picture-in-Picture failed: ' + (err.message || 'Please try clicking again.'));
         }
       });
     } else if (typeof pipVideo.webkitSetPresentationMode === 'function') {
       pipVideo.webkitSetPresentationMode('picture-in-picture');
-    } else {
-      showToast('Picture-in-Picture API is disabled in this browser. In Firefox, enable "media.videocontrols.picture-in-picture.video-element-pip.enabled" in about:config.');
     }
   }
 
@@ -866,11 +773,13 @@
     const card = document.createElement('div');
     card.id = 'ytm-glass-card';
 
+    // Restore saved card size or defaults
     const initialW = Math.max(300, Math.min(800, prefs.cardWidth || 350));
     const initialH = Math.max(240, Math.min(900, prefs.cardHeight || 460));
     card.style.width = `${initialW}px`;
     card.style.height = `${initialH}px`;
 
+    // Restore saved position if valid
     if (prefs.cardLeft !== null && prefs.cardTop !== null) {
       const left = Math.max(10, Math.min(window.innerWidth - initialW - 10, parseInt(prefs.cardLeft, 10)));
       const top = Math.max(10, Math.min(window.innerHeight - initialH - 10, parseInt(prefs.cardTop, 10)));
@@ -879,8 +788,6 @@
       card.style.right = 'auto';
       card.style.bottom = 'auto';
     }
-
-    const pipBtnTitle = isMac ? 'Pop out over other apps (macOS PiP)' : 'Pop out over other apps (Picture-in-Picture)';
 
     card.innerHTML = `
       <div id="ytm-card-header">
@@ -896,7 +803,7 @@
         <div id="ytm-actions">
           <button id="ytm-expand-btn" type="button" title="Expanded Mode (Theatre View)">⛶</button>
           <button id="ytm-gear-btn" type="button" title="Settings">⚙</button>
-          <button id="ytm-pip-btn" type="button" title="${pipBtnTitle}">⤢ Pop Out</button>
+          <button id="ytm-pip-btn" type="button" title="Pop out over other apps (macOS PiP)">⤢ Pop Out</button>
           <button id="ytm-min-btn" type="button" title="Minimize">–</button>
         </div>
       </div>
@@ -928,7 +835,7 @@
           <div class="ytm-pref-row">
             <span>Font Style</span>
             <select id="pref-font-family">
-              <option value="system" ${prefs.fontFamily === 'system' ? 'selected' : ''}>${isMac ? 'System (SF Pro)' : 'System Default'}</option>
+              <option value="system" ${prefs.fontFamily === 'system' ? 'selected' : ''}>System (SF Pro)</option>
               <option value="rounded" ${prefs.fontFamily === 'rounded' ? 'selected' : ''}>Rounded</option>
               <option value="mono" ${prefs.fontFamily === 'mono' ? 'selected' : ''}>Monospace</option>
               <option value="serif" ${prefs.fontFamily === 'serif' ? 'selected' : ''}>Serif Editorial</option>
@@ -961,7 +868,6 @@
         </div>
       </div>
       <div id="ytm-resize-handle" title="Drag to resize window"></div>
-      <div id="ytm-glass-toast"></div>
     `;
 
     const style = document.createElement('style');
@@ -1018,7 +924,6 @@
         display: flex; align-items: center; justify-content: space-between;
         padding: 12px 16px; background: rgba(0, 0, 0, 0.2);
         border-bottom: 1px solid rgba(255, 255, 255, 0.08); user-select: none;
-        -webkit-user-select: none;
       }
       #ytm-card-drag-handle { display: flex; align-items: center; gap: 10px; cursor: grab; flex: 1; min-width: 0; }
       #ytm-card-drag-handle:active { cursor: grabbing; }
@@ -1045,8 +950,6 @@
         flex: 1; overflow-y: auto; padding: 18px 16px; scroll-behavior: smooth;
         mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
         -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
-        scrollbar-width: thin;
-        scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
       }
       #ytm-lyrics-scroll-container::-webkit-scrollbar { width: 4px; }
       #ytm-lyrics-scroll-container::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
@@ -1077,13 +980,7 @@
       }
       #ytm-prefs-close { background: none; border: none; color: #aaa; font-size: 14px; cursor: pointer; }
       #ytm-prefs-close:hover { color: #fff; }
-      .ytm-prefs-content {
-        display: flex; flex-direction: column; gap: 16px; padding-top: 14px;
-        overflow-y: auto; font-size: 12px; scrollbar-width: thin;
-        scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-      }
-      .ytm-prefs-content::-webkit-scrollbar { width: 4px; }
-      .ytm-prefs-content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+      .ytm-prefs-content { display: flex; flex-direction: column; gap: 16px; padding-top: 14px; overflow-y: auto; font-size: 12px; }
       .ytm-pref-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
       .ytm-pref-row { display: flex; justify-content: space-between; align-items: center; }
       .ytm-pref-row select { background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; padding: 3px 6px; }
@@ -1097,7 +994,7 @@
         cursor: se-resize; background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.35) 50%);
         border-bottom-right-radius: 18px; z-index: 5;
       }
-      .ytm-empty-state { text-align: center; padding: 50px 10px; user-select: none; -webkit-user-select: none; }
+      .ytm-empty-state { text-align: center; padding: 50px 10px; user-select: none; }
       .ytm-empty-icon { font-size: 34px; color: var(--ytm-accent); margin-bottom: 8px; opacity: 0.85; }
       .ytm-empty-title { font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 4px; }
       .ytm-empty-sub { font-size: 12px; color: rgba(255, 255, 255, 0.45); line-height: 1.4; margin-bottom: 12px; }
@@ -1117,22 +1014,12 @@
       #ytm-jump-active-btn.visible {
         opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0);
       }
-      #ytm-glass-toast {
-        position: absolute; bottom: 20px; left: 16px; right: 16px;
-        background: rgba(18, 14, 28, 0.94); border: 1px solid var(--ytm-accent);
-        color: #fff; padding: 10px 14px; border-radius: 12px; font-size: 11px;
-        line-height: 1.4; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.7);
-        z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.25s ease, transform 0.25s ease;
-        transform: translateY(10px);
-      }
-      #ytm-glass-toast.visible {
-        opacity: 1; pointer-events: auto; transform: translateY(0);
-      }
     `;
 
     document.head.appendChild(style);
     document.body.appendChild(card);
 
+    // Add Jump to Current Lyric pill
     const jumpBtn = document.createElement('button');
     jumpBtn.id = 'ytm-jump-active-btn';
     jumpBtn.type = 'button';
@@ -1299,7 +1186,7 @@
       });
     }
 
-    // Double click header to toggle minimize/maximize or exit expanded mode
+    // Double click header to toggle minimize/maximize or exit expanded mode (macOS standard)
     const dragHandle = card.querySelector('#ytm-card-drag-handle');
     if (dragHandle) {
       dragHandle.addEventListener('dblclick', () => {
@@ -1314,37 +1201,18 @@
       });
     }
 
-    // Global keyboard shortcuts:
-    // - Escape for Expanded Mode
-    // - PiP: Option+P (macOS) / Alt+P or Alt+Shift+P (Windows/Linux)
-    // - 10s Seek: Option+Arrow (macOS) / Alt+Shift+Arrow or Ctrl+Alt+Arrow (Windows/Linux)
+    // Global keyboard shortcuts: Option+P for PiP, Escape for Expanded Mode, Option+Arrow for 10s Seek
     window.addEventListener('keydown', (e) => {
       if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
 
       if (e.key === 'Escape' && card.classList.contains('expanded')) {
         toggleExpand();
       }
-
-      const isKeyP = (e.key === 'p' || e.key === 'P' || e.code === 'KeyP');
-      const isPipTrigger = isMac
-        ? (e.altKey && isKeyP)
-        : ((e.altKey && isKeyP) || (e.altKey && e.shiftKey && isKeyP));
-
-      if (isPipTrigger) {
+      if (e.altKey && (e.key === 'p' || e.key === 'P' || e.code === 'KeyP')) {
         e.preventDefault();
         triggerPiP();
-        return;
       }
-
-      const isSeekForward = isMac
-        ? (e.altKey && e.key === 'ArrowRight')
-        : ((e.altKey && e.shiftKey && e.key === 'ArrowRight') || (e.ctrlKey && e.altKey && e.key === 'ArrowRight'));
-
-      const isSeekBackward = isMac
-        ? (e.altKey && e.key === 'ArrowLeft')
-        : ((e.altKey && e.shiftKey && e.key === 'ArrowLeft') || (e.ctrlKey && e.altKey && e.key === 'ArrowLeft'));
-
-      if (isSeekForward) {
+      if (e.altKey && e.key === 'ArrowRight') {
         e.preventDefault();
         const v = getYTMVideo();
         const p = getYTMPlayer();
@@ -1353,8 +1221,7 @@
         else if (v) v.currentTime = target;
         drawPiPFrame();
       }
-
-      if (isSeekBackward) {
+      if (e.altKey && e.key === 'ArrowLeft') {
         e.preventDefault();
         const v = getYTMVideo();
         const p = getYTMPlayer();
@@ -1377,7 +1244,6 @@
       offsetX = e.clientX - el.getBoundingClientRect().left;
       offsetY = e.clientY - el.getBoundingClientRect().top;
       document.body.style.userSelect = 'none';
-      document.body.style.webkitUserSelect = 'none';
     });
 
     window.addEventListener('mousemove', (e) => {
@@ -1394,7 +1260,6 @@
       if (isDragging) {
         isDragging = false;
         document.body.style.userSelect = '';
-        document.body.style.webkitUserSelect = '';
         prefs.cardLeft = el.style.left;
         prefs.cardTop = el.style.top;
         savePrefs();
@@ -1425,6 +1290,7 @@
       startW = el.offsetWidth;
       startH = el.offsetHeight;
 
+      // Fix coordinate anchoring: convert right/bottom to left/top so resizing tracks mouse naturally
       const rect = el.getBoundingClientRect();
       el.style.left = rect.left + 'px';
       el.style.top = rect.top + 'px';
@@ -1432,7 +1298,6 @@
       el.style.bottom = 'auto';
 
       document.body.style.userSelect = 'none';
-      document.body.style.webkitUserSelect = 'none';
       e.stopPropagation();
       e.preventDefault();
     });
@@ -1449,7 +1314,6 @@
       if (isResizing) {
         isResizing = false;
         document.body.style.userSelect = '';
-        document.body.style.webkitUserSelect = '';
         prefs.cardWidth = el.offsetWidth;
         prefs.cardHeight = el.offsetHeight;
         prefs.cardLeft = el.style.left;
@@ -1495,7 +1359,21 @@
   function fetchLyrics(rawTitle, rawArtist, duration) {
     if (!rawTitle) return;
 
+    const requestId = ++activeRequestId;
+    if (activeRequestHandle && typeof activeRequestHandle.abort === 'function') {
+      try { activeRequestHandle.abort(); } catch (e) {}
+    }
+
+    lyricsData = [];
+    cachedDomRows = [];
+    lastActiveIdx = -1;
+
+    const cleanTitle = cleanTrackTitle(rawTitle, rawArtist);
+    const primaryArtist = getPrimaryArtist(rawArtist);
+    const durSec = (duration && isFinite(duration) && duration > 0) ? Math.round(duration) : 0;
     const cacheKey = getCacheKey(rawTitle, rawArtist);
+
+    // 1. Check in-memory & persistent cache
     if (lyricsMemoryCache.has(cacheKey)) {
       const cached = lyricsMemoryCache.get(cacheKey);
       if (cached.syncedLyrics) {
@@ -1505,20 +1383,22 @@
         drawPiPFrame();
         return;
       } else if (cached.plainLyrics) {
-        lyricsData = [];
         lyricState = 'plain';
         renderPlainLyricsDOM(cached.plainLyrics);
         drawPiPFrame();
         return;
       } else if (cached.status === 'empty') {
-        lyricsData = [];
-        lyricState = 'empty';
-        renderEmptyState();
-        drawPiPFrame();
-        return;
+        // Negative cache hit (within 2 hours)
+        if (Date.now() - (cached.timestamp || 0) < 7200000) {
+          lyricState = 'empty';
+          renderEmptyState();
+          drawPiPFrame();
+          return;
+        }
       }
     }
 
+    // 2. Check if currently rate-limited by LRCLIB
     if (Date.now() < rateLimitUntil) {
       lyricState = 'rate_limited';
       renderRateLimitedState();
@@ -1527,28 +1407,20 @@
       return;
     }
 
-    const requestId = ++activeRequestId;
-    if (activeRequestHandle && typeof activeRequestHandle.abort === 'function') {
-      try { activeRequestHandle.abort(); } catch (e) {}
-    }
-
-    lyricsData = [];
+    // 3. Initiate Fetch Sequence
     lyricState = 'searching';
-    renderSearchingState();
     drawPiPFrame();
-
-    const cleanTitle = cleanTrackTitle(rawTitle, rawArtist);
-    const primaryArtist = getPrimaryArtist(rawArtist);
-    const durSec = Math.round(duration || 0);
+    renderSearchingState();
 
     const headers = {
-      'User-Agent': 'YTM-Glass-Lyrics/1.2 (https://github.com/ankrypht/ytm-glass-lyrics)',
-      'Accept': 'application/json'
+      'User-Agent': 'YTM-Glass-Lyrics/1.2 (Mac Safari PWA Userscript; https://github.com/ankrypht/ytm-glass-lyrics)',
+      'Lrclib-Client': 'YTM-Glass-Lyrics/1.2'
     };
 
+    // Step 1: Direct exact match (/api/get) without forcing duration
     const stage1Url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(primaryArtist)}`;
 
-    activeRequestHandle = crossRequest({
+    activeRequestHandle = GM_xmlhttpRequest({
       method: 'GET',
       url: stage1Url,
       headers: headers,
@@ -1585,6 +1457,7 @@
           return;
         }
 
+        // Pacing delay to adhere to LRCLIB best practices before fallback search
         setTimeout(() => {
           if (requestId === activeRequestId) {
             stage2Search(cleanTitle, primaryArtist, durSec, cacheKey, requestId, rawTitle, rawArtist, headers);
@@ -1607,9 +1480,10 @@
   function stage2Search(title, artist, targetDuration, cacheKey, requestId, rawTitle, rawArtist, headers) {
     if (requestId !== activeRequestId) return;
 
+    // Structured field search gives far more accurate results than loose raw queries
     const searchUrl = `https://lrclib.net/api/search?track_name=${encodeURIComponent(title)}&artist_name=${encodeURIComponent(artist)}`;
 
-    activeRequestHandle = crossRequest({
+    activeRequestHandle = GM_xmlhttpRequest({
       method: 'GET',
       url: searchUrl,
       headers: headers,
@@ -1623,6 +1497,7 @@
             if (Array.isArray(results) && results.length > 0) {
               const candidates = results.filter(r => r.syncedLyrics && r.syncedLyrics.trim().length > 0);
               if (candidates.length > 0) {
+                // If duration is known, choose closest candidate
                 if (targetDuration > 0) {
                   candidates.sort((a, b) => Math.abs(a.duration - targetDuration) - Math.abs(b.duration - targetDuration));
                 }
@@ -1635,6 +1510,7 @@
                 return;
               }
 
+              // Fallback to plain lyrics if synced lyrics aren't available
               const plainCandidates = results.filter(r => r.plainLyrics && r.plainLyrics.trim().length > 0);
               if (plainCandidates.length > 0) {
                 const chosen = plainCandidates[0];
@@ -1651,6 +1527,7 @@
           return;
         }
 
+        // Cache negative result so repeated plays don't spam requests
         saveToLyricsCache(cacheKey, { status: 'empty', timestamp: Date.now() });
         lyricState = 'empty';
         renderEmptyState();
@@ -1880,6 +1757,7 @@
       bindVideoEvents(video);
     }
 
+    // Dynamic Polling for Track & Video Element Changes
     setInterval(() => {
       const liveVideo = getYTMVideo();
       if (liveVideo && liveVideo !== hookedVideo) {
@@ -1888,6 +1766,7 @@
 
       const info = getCurrentTrackInfo();
       if (info.title) {
+        // If artist DOM element is present but still loading text, wait 1 tick
         if (!info.artist && (document.querySelector('.byline.ytmusic-player-bar') || navigator.mediaSession?.metadata?.artist)) {
           return;
         }
@@ -1916,6 +1795,7 @@
           extractAlbumPalette(info.artwork);
           fetchLyrics(info.title, effectiveArtist, info.duration);
         } else {
+          // Duration or artwork became available after initial song load
           if (info.duration > 0 && currentSong.duration !== info.duration) {
             currentSong.duration = info.duration;
           }
