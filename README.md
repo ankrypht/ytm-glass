@@ -4,7 +4,7 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20(Safari)-black.svg?logo=apple)](https://github.com/ankrypht/ytm-glass-lyrics)
 [![Extension](https://img.shields.io/badge/Extension-Userscripts%20by%20Justin%20Wasack-orange.svg)](https://apps.apple.com/app/userscripts/id1463298887)
-[![Version](https://img.shields.io/badge/Version-1.2.2-blue.svg)](https://github.com/ankrypht/ytm-glass-lyrics)
+[![Version](https://img.shields.io/badge/Version-1.5.0-blue.svg)](https://github.com/ankrypht/ytm-glass-lyrics)
 
 An Apple Music-inspired synchronized lyrics and **Canvas Picture-in-Picture (PiP)** userscript built specifically for **macOS** with **Safari** (and Safari Web Apps / PWA) using the **[Userscripts](https://apps.apple.com/app/userscripts/id1463298887)** extension by Justin Wasack.
 
@@ -12,11 +12,18 @@ An Apple Music-inspired synchronized lyrics and **Canvas Picture-in-Picture (PiP
 
 ## ✨ Features
 
-- 🪟 **Apple Music-Style Frosted Glass UI**
-  - Ultra-sleek glassmorphism overlay using native `-webkit-backdrop-filter: blur(32px) saturate(210%)`.
-  - Fully resizable, draggable, and persists position/size across restarts.
-  - **Theatre Mode (Expanded View)** for full-height karaoke lyrics overlay.
-  - Double-click header to collapse or restore (standard macOS window behavior).
+- 🪟 **Apple Music-Style Frosted Glass & Dynamic Theming (Home & Player Screens)**
+  - Full-app dynamic color extraction: seamlessly bathes both the **Home Screen** and **Player Screen** in radiant ambient mesh gradients derived from the active album art.
+  - Transparent browse containers allow the dynamic album glow to shine through browsing sections, category chips, and playlists.
+  - Frosted glass navigation bar, glowing category pills, glass sidebar, and smooth card hover lifts.
+  - **Pixel-Perfect Player Screen Layout & Vertical Alignment**:
+    - Right side panel (`#side-panel`) dynamically synchronizes its rendered height with the song artwork using a high-performance `ResizeObserver`, ensuring top edges, bottom edges, and vertical centers align identically.
+    - Symmetrical, balanced padding across all four sides in both maximized (fill) and floating/resized PWA window modes.
+    - Zero video collisions: bounded layout constraints prevent widescreen (16:9) music videos from expanding into or touching the right-side tabs panel, maintaining a clean, fluid gap.
+  - Integrated synchronized lyrics directly inside the native **LYRICS** tab—no floating window overlays.
+  - Soft ambient halo lighting behind album artwork and dynamic backdrop mesh.
+  - Frosted glass side panel, translucent tab bar with glowing active indicator, and glass player controls.
+  - Quick-jump floating pill (`↓ Current Lyric`) when scrolling through lyrics.
 
 - 🖼️ **Native WebKit Picture-in-Picture (PiP)**
   - Streams a dynamically rendered high-DPI 520×520 canvas directly into macOS native Picture-in-Picture using WebKit presentation mode.
@@ -26,7 +33,7 @@ An Apple Music-inspired synchronized lyrics and **Canvas Picture-in-Picture (PiP
 
 - 🎨 **Adaptive Album Art Color Extraction**
   - Automatically samples the playing song's album artwork via cross-origin blob extraction.
-  - Calculates dominant saturation and ambient dark-tone luminance to build custom gradients and accents that match each track.
+  - Calculates dominant saturation and ambient dark-tone luminance to build custom gradients, ambient backdrop glow, and accents that match each track.
 
 - 🍎 **Native Apple Typography**
   - Designed natively around Apple system typefaces: `SF Pro Display`, `SF Pro Text`, `SF Pro Rounded`, and `SF Mono`.
@@ -74,7 +81,7 @@ An Apple Music-inspired synchronized lyrics and **Canvas Picture-in-Picture (PiP
 1. Go to the script page on **[Greasy Fork](https://greasyfork.org/en/scripts/596372-youtube-music-glass-synced-lyrics-pip)**.
 2. Click the green **Install this script** button.
 3. The Userscripts extension prompt will appear. Click **Install**.
-4. Open [music.youtube.com](https://music.youtube.com) and play any track. The frosted glass card will appear in the bottom-right corner!
+4. Open [music.youtube.com](https://music.youtube.com) and play any track. The player screen will be styled with dynamic frosted glass and synced lyrics will be waiting in the **LYRICS** tab!
 
 #### Method 2: Direct Install from GitHub (Alternative)
 If you prefer installing directly from source:
@@ -95,16 +102,15 @@ If you prefer installing directly from source:
 | **Pop Out Picture-in-Picture (PiP)** | <kbd>⌥ Option</kbd> + <kbd>P</kbd> |
 | **Seek Forward 10 Seconds** | <kbd>⌥ Option</kbd> + <kbd>→</kbd> |
 | **Seek Backward 10 Seconds** | <kbd>⌥ Option</kbd> + <kbd>←</kbd> |
-| **Exit Expanded / Theatre Mode** | <kbd>Esc</kbd> |
-| **Minimize / Restore Card** | Double-click header |
+| **Close Settings Modal** | <kbd>Esc</kbd> |
 
 ---
 
 ## ⚙️ Settings & Customization
 
-Click the gear icon (**⚙**) on the floating glass card header to customize:
+Click the gear icon (**⚙**) on the lyrics tab header to customize:
 
-- **Auto-Sync Colors with Album Art**: Dynamically themes the interface using the album artwork palette.
+- **Auto-Sync Colors with Album Art**: Dynamically themes the interface and ambient background using the album artwork palette.
 - **Custom Accent Color**: Choose a static accent color when auto-sync is disabled.
 - **Font Style**:
   - `System (SF Pro)`: Apple's San Francisco typeface.
@@ -112,7 +118,7 @@ Click the gear icon (**⚙**) on the floating glass card header to customize:
   - `Monospace`: Code-style `SF Mono`.
   - `Serif Editorial`: Classic `New York` / `Georgia`.
 - **PiP Active Lyric Size**: Slider from `24px` to `44px` to adjust Picture-in-Picture legibility.
-- **In-App Lyrics Font Size**: Slider from `13px` to `22px` for comfortable reading in the floating card.
+- **Lyrics Font Size**: Slider from `14px` to `26px` for comfortable in-app reading.
 - **Timing Calibration (Offset)**: Fine-tune lyric sync between `-2.0s` and `+2.0s` in 100ms increments.
 
 ---
@@ -121,14 +127,14 @@ Click the gear icon (**⚙**) on the floating glass card header to customize:
 
 ### Picture-in-Picture doesn't open
 - Ensure you have clicked into the YouTube Music tab at least once (Safari requires a user gesture before video presentation modes can activate).
-- You can also click the **⤢ Pop Out** button directly in the card header.
+- You can also click the **⤢ Pop Out** button directly in the lyrics tab header.
 
 ### Closing PiP resumes music when I wanted it paused
 - Safari momentarily pauses background media streams when a PiP window is dismissed. The script includes an auto-resume safeguard if the track was playing within 1.5s prior to closing. If you wish to keep playback paused, pause the music first and wait 2 seconds before closing PiP.
 
 ### Lyrics not found for a track
 - Instrumental tracks or newly released songs may not yet be in LRCLIB.
-- The card will display an "Instrumental or No Lyrics" screen.
+- The lyrics tab will display an "Instrumental or No Lyrics" screen.
 - Click **↻ Retry Lyrics** to clear the cached negative result and query the API again.
 
 ---
@@ -140,3 +146,4 @@ This project is licensed under the **GNU General Public License v3.0** (GPL-3.0)
 ---
 
 **Made with ❤️ for macOS & Safari.** Issues and feature requests are welcome on [GitHub Issues](https://github.com/ankrypht/ytm-glass-lyrics/issues).
+

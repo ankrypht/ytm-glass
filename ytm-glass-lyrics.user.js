@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Music Glass Synced Lyrics & PiP
 // @namespace    https://github.com/ankrypht/ytm-glass-lyrics
-// @version      1.2.2
+// @version      1.5.0
 // @description  Apple Music-style glass synced lyrics & native Picture-in-Picture for YouTube Music on Safari (macOS).
 // @author       ankrypht
 // @license      GPL-3.0-or-later
@@ -28,18 +28,20 @@
     bgEnd: '#13101c',
     fontFamily: 'system',
     pipFontSize: 32,
-    pwaFontSize: 16,
-    timeOffsetMs: 0,
-    cardWidth: 350,
-    cardHeight: 460,
-    cardLeft: null,
-    cardTop: null
+    lyricsFontSize: 18,
+    timeOffsetMs: 0
   };
 
   let prefs = Object.assign({}, defaultPrefs);
   try {
     const saved = localStorage.getItem(PREFS_KEY);
-    if (saved) prefs = Object.assign({}, defaultPrefs, JSON.parse(saved));
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.pwaFontSize && !parsed.lyricsFontSize) {
+        parsed.lyricsFontSize = parsed.pwaFontSize;
+      }
+      prefs = Object.assign({}, defaultPrefs, parsed);
+    }
   } catch (e) {}
 
   function savePrefs() {
@@ -337,17 +339,29 @@
   }
 
   function applyTheme() {
-    const card = document.getElementById('ytm-glass-card');
-    if (!card) return;
-
     const curAccent = prefs.syncAlbumArt ? activeTheme.accent : prefs.accentColor;
     const curBgStart = prefs.syncAlbumArt ? activeTheme.bgStart : prefs.bgStart;
     const curBgEnd = prefs.syncAlbumArt ? activeTheme.bgEnd : prefs.bgEnd;
+    const fontCss = getCSSFont();
+    const fontSize = parseInt(prefs.lyricsFontSize, 10) || 18;
 
-    card.style.setProperty('--ytm-accent', curAccent);
-    card.style.setProperty('--ytm-font', getCSSFont());
-    card.style.setProperty('--ytm-pwa-font-size', `${prefs.pwaFontSize}px`);
-    card.style.background = `linear-gradient(145deg, ${colorWithAlpha(curBgStart, 0.86)}, ${colorWithAlpha(curBgEnd, 0.94)})`;
+    const root = document.documentElement;
+    root.style.setProperty('--ytm-accent', curAccent);
+    root.style.setProperty('--ytm-font', fontCss);
+    root.style.setProperty('--ytm-lyrics-font-size', `${fontSize}px`);
+    root.style.setProperty('--ytm-accent-glow', colorWithAlpha(curAccent, 0.45));
+    root.style.setProperty('--ytm-bg-start', curBgStart);
+    root.style.setProperty('--ytm-bg-end', curBgEnd);
+
+    const backdrop = document.getElementById('ytm-ambient-backdrop');
+    if (backdrop) {
+      backdrop.style.background = `
+        radial-gradient(circle at 18% 30%, ${colorWithAlpha(curAccent, 0.28)} 0%, transparent 60%),
+        radial-gradient(circle at 82% 65%, ${colorWithAlpha(curBgEnd, 0.45)} 0%, transparent 65%),
+        radial-gradient(circle at 50% 88%, ${colorWithAlpha(curAccent, 0.12)} 0%, transparent 60%),
+        linear-gradient(150deg, ${curBgStart} 0%, #030307 100%)
+      `;
+    }
   }
 
   // 4. Initializing Canvas Pipeline
@@ -767,57 +781,752 @@
     }
   }
 
-  // 7. Resizable & Draggable In-PWA Card UI
-  function injectFloatingUI() {
-    if (document.getElementById('ytm-glass-card')) return;
+  // 7. Player Screen Glass Effect & Integrated Lyrics Tab UI
+  let activeTabName = 'UP NEXT';
+  let tabsObserver = null;
 
-    const card = document.createElement('div');
-    card.id = 'ytm-glass-card';
+  function openPrefsModal() {
+    const modal = document.getElementById('ytm-prefs-modal');
+    if (modal) modal.classList.add('active');
+  }
 
-    // Restore saved card size or defaults
-    const initialW = Math.max(300, Math.min(800, prefs.cardWidth || 350));
-    const initialH = Math.max(240, Math.min(900, prefs.cardHeight || 460));
-    card.style.width = `${initialW}px`;
-    card.style.height = `${initialH}px`;
+  function closePrefsModal() {
+    const modal = document.getElementById('ytm-prefs-modal');
+    if (modal) modal.classList.remove('active');
+  }
 
-    // Restore saved position if valid
-    if (prefs.cardLeft !== null && prefs.cardTop !== null) {
-      const left = Math.max(10, Math.min(window.innerWidth - initialW - 10, parseInt(prefs.cardLeft, 10)));
-      const top = Math.max(10, Math.min(window.innerHeight - initialH - 10, parseInt(prefs.cardTop, 10)));
-      card.style.left = `${left}px`;
-      card.style.top = `${top}px`;
-      card.style.right = 'auto';
-      card.style.bottom = 'auto';
+  function getPlayerPage() {
+    return document.querySelector('ytmusic-player-page#player-page') || document.querySelector('ytmusic-player-page');
+  }
+
+  function scrollLyricsToElement(rowElement, smooth = true) {
+    if (!rowElement) return;
+    const container = document.getElementById('ytm-lyrics-scroll-container');
+    if (!container) return;
+
+    const rowRect = rowElement.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+
+    // The distance of the row relative to the visible container top
+    const relativeTop = rowRect.top - containerRect.top;
+    const targetScrollTop = container.scrollTop + relativeTop - (container.clientHeight / 2) + (rowRect.height / 2);
+
+    container.scrollTo({
+      top: Math.max(0, targetScrollTop),
+      behavior: smooth ? 'smooth' : 'auto'
+    });
+  }
+
+  function getLyricsTabButton() {
+    const playerPage = getPlayerPage();
+    if (!playerPage) return null;
+    const tabs = Array.from(playerPage.querySelectorAll('tp-yt-paper-tab, paper-tab, ytmusic-tab-header-renderer, .tab-header'));
+    return tabs.find(t => (t.textContent || '').trim().toUpperCase().includes('LYRIC')) || null;
+  }
+
+  function detectActiveTabName() {
+    const playerPage = getPlayerPage();
+    if (!playerPage) return 'UP NEXT';
+    const tabs = Array.from(playerPage.querySelectorAll('tp-yt-paper-tab, paper-tab, ytmusic-tab-header-renderer'));
+    const activeTab = tabs.find(t => t.classList.contains('iron-selected') || t.getAttribute('aria-selected') === 'true');
+    if (!activeTab) return 'UP NEXT';
+    const txt = activeTab.textContent.trim().toUpperCase();
+    if (txt.includes('LYRIC')) return 'LYRICS';
+    if (txt.includes('UP NEXT') || txt.includes('QUEUE')) return 'UP NEXT';
+    if (txt.includes('COMMENT')) return 'COMMENTS';
+    if (txt.includes('RELATED')) return 'RELATED';
+    return txt;
+  }
+
+  function updateTabVisibility(forcedTab) {
+    const playerPage = getPlayerPage();
+    if (!playerPage) return;
+
+    const currentTab = forcedTab || detectActiveTabName();
+    activeTabName = currentTab;
+    playerPage.setAttribute('data-ytm-active-tab', currentTab);
+
+    const lyricsContainer = document.getElementById('ytm-tab-lyrics-container');
+    if (!lyricsContainer) return;
+
+    if (currentTab === 'LYRICS') {
+      lyricsContainer.style.setProperty('display', 'flex', 'important');
+      if (lastActiveIdx >= 0 && cachedDomRows[lastActiveIdx] && !isUserScrolling) {
+        scrollLyricsToElement(cachedDomRows[lastActiveIdx], true);
+      }
+    } else {
+      lyricsContainer.style.setProperty('display', 'none', 'important');
+    }
+  }
+
+  function setupTabsWatcher() {
+    const playerPage = getPlayerPage();
+    if (!playerPage) return;
+
+    const tabsContainer = playerPage.querySelector('tp-yt-paper-tabs, paper-tabs, ytmusic-tabs');
+    if (!tabsContainer) return;
+
+    const allTabs = Array.from(playerPage.querySelectorAll('tp-yt-paper-tab, paper-tab, ytmusic-tab-header-renderer'));
+    const lyricsTab = getLyricsTabButton();
+
+    if (lyricsTab) {
+      // Un-disable Lyrics tab if YouTube Music natively disabled it
+      if (lyricsTab.hasAttribute('disabled')) lyricsTab.removeAttribute('disabled');
+      if (lyricsTab.getAttribute('aria-disabled') === 'true') lyricsTab.setAttribute('aria-disabled', 'false');
+      lyricsTab.style.pointerEvents = 'auto';
+      lyricsTab.style.cursor = 'pointer';
+      lyricsTab.style.opacity = '1';
+
+      if (!lyricsTab.__ytmGlassBound) {
+        lyricsTab.__ytmGlassBound = true;
+        lyricsTab.addEventListener('click', () => {
+          allTabs.forEach(t => {
+            if (t !== lyricsTab) {
+              t.classList.remove('iron-selected');
+              t.setAttribute('aria-selected', 'false');
+            }
+          });
+          lyricsTab.classList.add('iron-selected');
+          lyricsTab.setAttribute('aria-selected', 'true');
+          updateTabVisibility('LYRICS');
+        });
+      }
     }
 
-    card.innerHTML = `
-      <div id="ytm-card-header">
-        <div id="ytm-card-drag-handle">
-          <span id="ytm-drag-indicator">⠿</span>
-          <div id="ytm-track-meta">
-            <div id="ytm-ui-title-container">
-              <span id="ytm-ui-title">Waiting for playback...</span>
-            </div>
-            <div id="ytm-ui-artist">YouTube Music</div>
-          </div>
-        </div>
-        <div id="ytm-actions">
-          <button id="ytm-expand-btn" type="button" title="Expanded Mode (Theatre View)">⛶</button>
-          <button id="ytm-gear-btn" type="button" title="Settings">⚙</button>
-          <button id="ytm-pip-btn" type="button" title="Pop out over other apps (macOS PiP)">⤢ Pop Out</button>
-          <button id="ytm-min-btn" type="button" title="Minimize">–</button>
-        </div>
-      </div>
-      <div id="ytm-lyrics-scroll-container">
-        <div id="ytm-lyrics-list">
-          <div class="ytm-empty-state">
-            <div class="ytm-empty-icon">♫</div>
-            <div class="ytm-empty-title">Ready for music</div>
-            <div class="ytm-empty-sub">Play a track to view synchronized lyrics</div>
-          </div>
-        </div>
-      </div>
-      <div id="ytm-prefs-modal">
+    allTabs.forEach(tab => {
+      if (tab !== lyricsTab && !tab.__ytmGlassBound) {
+        tab.__ytmGlassBound = true;
+        tab.addEventListener('click', () => {
+          if (lyricsTab) {
+            lyricsTab.classList.remove('iron-selected');
+            lyricsTab.setAttribute('aria-selected', 'false');
+          }
+          setTimeout(() => updateTabVisibility(), 60);
+        });
+      }
+    });
+
+    if (!tabsObserver && tabsContainer) {
+      tabsObserver = new MutationObserver(() => {
+        updateTabVisibility();
+      });
+      tabsObserver.observe(tabsContainer, { attributes: true, subtree: true, attributeFilter: ['class', 'aria-selected', 'selected'] });
+    }
+  }
+
+
+
+  function injectPlayerGlassUI() {
+    if (document.getElementById('ytm-glass-styles')) return;
+
+    const style = document.createElement('style');
+    style.id = 'ytm-glass-styles';
+    style.textContent = `
+      :root {
+        --ytm-accent: ${prefs.accentColor};
+        --ytm-font: ${getCSSFont()};
+        --ytm-lyrics-font-size: ${prefs.lyricsFontSize}px;
+        --ytm-accent-glow: ${colorWithAlpha(prefs.accentColor, 0.45)};
+        --ytm-bg-start: ${prefs.bgStart};
+        --ytm-bg-end: ${prefs.bgEnd};
+      }
+
+      /* Global scrollbar protections to eliminate right-side gutter */
+      html, body, ytmusic-app {
+        scrollbar-width: none !important;
+      }
+      html::-webkit-scrollbar,
+      body::-webkit-scrollbar,
+      ytmusic-app::-webkit-scrollbar {
+        display: none !important;
+        width: 0px !important;
+        height: 0px !important;
+      }
+
+      /* Player Screen Dynamic Ambient Mesh Backdrop (Integrated Inside Player Page) */
+      #ytm-ambient-backdrop {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        z-index: 0 !important;
+        pointer-events: none !important;
+        background-repeat: no-repeat !important;
+        background-size: cover !important;
+        background:
+          radial-gradient(circle at 18% 30%, ${colorWithAlpha(prefs.accentColor, 0.28)} 0%, transparent 60%),
+          radial-gradient(circle at 82% 65%, ${colorWithAlpha(prefs.bgEnd, 0.45)} 0%, transparent 65%),
+          radial-gradient(circle at 50% 88%, ${colorWithAlpha(prefs.accentColor, 0.12)} 0%, transparent 60%),
+          linear-gradient(150deg, ${prefs.bgStart} 0%, #030307 100%);
+        transition: background 1.2s cubic-bezier(0.2, 0, 0, 1);
+        will-change: background;
+      }
+
+      /* Home Screen Top Nav Bar Glass (Edge-to-Edge with Zero Right-Side Gap) */
+      ytmusic-nav-bar {
+        width: 100vw !important;
+        max-width: 100vw !important;
+        box-sizing: border-box !important;
+        background: rgba(10, 8, 16, 0.65) !important;
+        backdrop-filter: blur(24px) saturate(200%) !important;
+        -webkit-backdrop-filter: blur(24px) saturate(200%) !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+      }
+
+      /* Category Glass Chips on Home Screen (Sleek Compact Rounded Pills) */
+      ytmusic-chip-cloud-chip-renderer {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        --ytmusic-chip-background-color: rgba(255, 255, 255, 0.08) !important;
+        --yt-spec-badge-chip-background: rgba(255, 255, 255, 0.08) !important;
+      }
+      ytmusic-chip-cloud-chip-renderer a,
+      ytmusic-chip-cloud-chip-renderer button,
+      ytmusic-chip-cloud-chip-renderer [role="button"],
+      ytmusic-chip-cloud-chip-renderer #chip,
+      ytmusic-chip-cloud-chip-renderer .chip-container {
+        border-radius: 999px !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        backdrop-filter: blur(16px) !important;
+        -webkit-backdrop-filter: blur(16px) !important;
+        transition: all 0.2s ease !important;
+      }
+      ytmusic-chip-cloud-chip-renderer:hover a,
+      ytmusic-chip-cloud-chip-renderer:hover button,
+      ytmusic-chip-cloud-chip-renderer:hover [role="button"],
+      ytmusic-chip-cloud-chip-renderer:hover #chip {
+        background: rgba(255, 255, 255, 0.16) !important;
+        border-color: rgba(255, 255, 255, 0.24) !important;
+      }
+      ytmusic-chip-cloud-chip-renderer[selected] a,
+      ytmusic-chip-cloud-chip-renderer[selected] button,
+      ytmusic-chip-cloud-chip-renderer[selected] [role="button"],
+      ytmusic-chip-cloud-chip-renderer[selected] #chip,
+      ytmusic-chip-cloud-chip-renderer[is-selected] a,
+      ytmusic-chip-cloud-chip-renderer[is-selected] button {
+        background: var(--ytm-accent) !important;
+        border-color: var(--ytm-accent) !important;
+        box-shadow: 0 0 14px var(--ytm-accent-glow) !important;
+        color: #ffffff !important;
+      }
+
+      /* Left Guide Navigation Bar Glass */
+      ytmusic-guide-renderer,
+      #guide-content.ytmusic-guide-renderer {
+        background: rgba(8, 6, 12, 0.55) !important;
+        backdrop-filter: blur(28px) saturate(200%) !important;
+        -webkit-backdrop-filter: blur(28px) saturate(200%) !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+      }
+      ytmusic-guide-entry-renderer:hover {
+        background: rgba(255, 255, 255, 0.08) !important;
+        border-radius: 10px !important;
+      }
+      ytmusic-guide-entry-renderer[is-primary] yt-icon,
+      ytmusic-guide-entry-renderer[active] yt-icon {
+        color: var(--ytm-accent) !important;
+      }
+
+      /* Album Cards Sleek Rounded Corners */
+      ytmusic-two-row-item-renderer .image-wrapper,
+      ytmusic-two-row-item-renderer .image-wrapper img,
+      ytmusic-two-row-item-renderer .image-wrapper yt-img-shadow,
+      ytmusic-custom-index-column-item-renderer .image-wrapper,
+      ytmusic-custom-index-column-item-renderer .image-wrapper img,
+      ytmusic-custom-index-column-item-renderer .image-wrapper yt-img-shadow {
+        border-radius: 14px !important;
+      }
+
+      /* 1. Player Page Base (ZERO Layout Overrides: Native Size, Placement & Transitions) */
+      ytmusic-player-page#player-page,
+      ytmusic-player-page {
+        background: transparent !important;
+        font-family: var(--ytm-font) !important;
+      }
+
+      /* 2. Album Artwork Glow (Left Panel: Native Size & Placement) */
+      ytmusic-player-page #main-panel {
+        position: relative !important;
+        z-index: 1 !important;
+        background: transparent !important;
+      }
+      ytmusic-player-page #player {
+        background: transparent !important;
+      }
+      ytmusic-player-page #player,
+      ytmusic-player-page #song-image,
+      ytmusic-player-page .thumbnail-image-wrapper {
+        border-radius: 20px !important;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.75), 0 0 90px var(--ytm-accent-glow) !important;
+        transition: box-shadow 1.2s ease !important;
+      }
+      ytmusic-player-page #song-image img,
+      ytmusic-player-page #player video {
+        border-radius: 20px !important;
+      }
+
+      /* 3. Frosted Glass Side Panel (Right Panel: Centered Vertically & Spaced from Media) */
+      ytmusic-player-page #side-panel {
+        position: relative !important;
+        z-index: 2 !important;
+        background: rgba(12, 10, 20, 0.55) !important;
+        backdrop-filter: blur(40px) saturate(210%) !important;
+        -webkit-backdrop-filter: blur(40px) saturate(210%) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 24px !important;
+        box-shadow: 0 28px 80px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+        align-self: center !important;
+        margin: auto clamp(28px, 4vw, 56px) auto clamp(24px, 3vw, 40px) !important;
+        max-height: min(72vh, 520px) !important;
+        height: auto !important;
+        padding: 12px 14px 14px 14px !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+        box-sizing: border-box !important;
+      }
+
+      /* 4. Tab Navigation Bar (Full 48px Height, Never Squished) */
+      ytmusic-player-page tp-yt-paper-tabs,
+      ytmusic-player-page paper-tabs,
+      ytmusic-player-page ytmusic-tabs {
+        background: transparent !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+        --paper-tabs-selection-bar-color: var(--ytm-accent) !important;
+        flex: 0 0 48px !important;
+        height: 48px !important;
+        min-height: 48px !important;
+        margin-bottom: 6px !important;
+        overflow: visible !important;
+        box-sizing: border-box !important;
+      }
+      ytmusic-player-page tp-yt-paper-tab,
+      ytmusic-player-page paper-tab {
+        color: rgba(255, 255, 255, 0.6) !important;
+        font-family: var(--ytm-font) !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.5px !important;
+        font-size: 13px !important;
+        transition: color 0.2s ease !important;
+        height: 48px !important;
+        line-height: 48px !important;
+        padding: 0 14px !important;
+        box-sizing: border-box !important;
+      }
+      ytmusic-player-page tp-yt-paper-tab:hover,
+      ytmusic-player-page paper-tab:hover {
+        color: #ffffff !important;
+      }
+      ytmusic-player-page tp-yt-paper-tab.iron-selected,
+      ytmusic-player-page paper-tab.iron-selected {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+      }
+      ytmusic-player-page #selectionBar.tp-yt-paper-tabs {
+        background-color: var(--ytm-accent) !important;
+        border-bottom: 2px solid var(--ytm-accent) !important;
+        box-shadow: 0 0 12px var(--ytm-accent) !important;
+      }
+
+      /* Tab Content / Queue Container Flexibility */
+      ytmusic-player-page #tab-renderer,
+      ytmusic-player-page ytmusic-tab-renderer {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        overflow-y: auto !important;
+      }
+
+      /* 5. Hide Native Lyrics when LYRICS Tab is Active */
+      ytmusic-player-page[data-ytm-active-tab="LYRICS"] ytmusic-description-shelf-renderer,
+      ytmusic-player-page[data-ytm-active-tab="LYRICS"] ytmusic-message-renderer,
+      ytmusic-player-page[data-ytm-active-tab="LYRICS"] #tab-renderer[page-type="MUSIC_PAGE_TYPE_TRACK_LYRICS"],
+      ytmusic-player-page[data-ytm-active-tab="LYRICS"] ytmusic-tab-renderer[page-type="MUSIC_PAGE_TYPE_TRACK_LYRICS"] {
+        display: none !important;
+      }
+
+      /* 6. Integrated Synced Lyrics Container inside Side Panel */
+      #ytm-tab-lyrics-container {
+        display: none;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+        position: relative;
+        overflow: hidden;
+        font-family: var(--ytm-font);
+        padding-top: 6px;
+      }
+
+      #ytm-tab-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px 12px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        user-select: none;
+      }
+      #ytm-track-meta {
+        overflow: hidden;
+        flex: 1;
+        min-width: 0;
+        padding-right: 12px;
+      }
+      #ytm-ui-title-container {
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      #ytm-ui-title {
+        display: inline-block;
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+      }
+      #ytm-ui-title.is-marquee {
+        animation: ytmMarquee 8s ease-in-out infinite alternate;
+      }
+      @keyframes ytmMarquee {
+        0%, 20% { transform: translateX(0); }
+        80%, 100% { transform: translateX(calc(-100% + 150px)); }
+      }
+      #ytm-ui-artist {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--ytm-accent);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 1px;
+      }
+
+      #ytm-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      #ytm-actions button {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #eee;
+        padding: 6px 12px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+      #ytm-actions button:hover {
+        background: rgba(255, 255, 255, 0.18);
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.24);
+      }
+      #ytm-actions button#ytm-pip-btn:hover {
+        background: var(--ytm-accent);
+        border-color: var(--ytm-accent);
+        color: #fff;
+        box-shadow: 0 0 14px var(--ytm-accent);
+      }
+
+      /* 7. Synced Lyrics Scrolling View (Identical to Original Perfect Look) */
+      #ytm-lyrics-scroll-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 18px 16px;
+        scroll-behavior: smooth;
+        mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+      }
+      #ytm-lyrics-scroll-container::-webkit-scrollbar,
+      ytmusic-player-page #side-panel::-webkit-scrollbar,
+      ytmusic-player-page #side-panel *::-webkit-scrollbar,
+      ytmusic-player-page #tab-renderer::-webkit-scrollbar,
+      ytmusic-player-page ytmusic-tab-renderer::-webkit-scrollbar {
+        display: none !important;
+        width: 0px !important;
+        height: 0px !important;
+      }
+      ytmusic-player-page #side-panel,
+      ytmusic-player-page #side-panel * {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+      }
+      #ytm-lyrics-list {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 20px 0;
+      }
+      .ytm-lrc-row {
+        opacity: 0.35;
+        font-size: var(--ytm-lyrics-font-size);
+        line-height: 1.45;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-radius: 8px;
+        padding: 4px 6px;
+        color: #fff;
+      }
+      .ytm-lrc-row:hover {
+        opacity: 0.85;
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .ytm-lrc-row.active {
+        opacity: 1;
+        font-weight: 700;
+        font-size: calc(var(--ytm-lyrics-font-size) + 2px);
+        color: var(--ytm-accent);
+        transform: scale(1.02);
+        transform-origin: left center;
+        text-shadow: 0 0 16px var(--ytm-accent);
+      }
+      .ytm-plain-lyrics-view {
+        white-space: pre-wrap;
+        font-size: var(--ytm-lyrics-font-size);
+        line-height: 1.6;
+        opacity: 0.85;
+        padding: 10px 4px;
+      }
+
+      /* 8. Queue Items Glass Styling (When UP NEXT is Active) */
+      ytmusic-player-queue-item {
+        border-radius: 10px !important;
+        transition: background 0.15s ease !important;
+        margin: 1px 0 !important;
+      }
+      ytmusic-player-queue-item:hover {
+        background: rgba(255, 255, 255, 0.08) !important;
+      }
+      ytmusic-player-queue-item[selected] {
+        background: rgba(255, 255, 255, 0.12) !important;
+        border-left: 3px solid var(--ytm-accent) !important;
+      }
+
+      /* 9. Player Bar Glass Polish & Edge-to-Edge Guarantee */
+      ytmusic-player-bar {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100vw !important;
+        min-width: 100vw !important;
+        max-width: 100vw !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        background: rgba(10, 8, 16, 0.75) !important;
+        backdrop-filter: blur(28px) saturate(200%) !important;
+        -webkit-backdrop-filter: blur(28px) saturate(200%) !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+        z-index: 1000 !important;
+      }
+      #progress-bar.ytmusic-player-bar {
+        --paper-slider-active-color: var(--ytm-accent) !important;
+      }
+      #progress-bar.ytmusic-player-bar[focused],
+      ytmusic-player-bar:hover #progress-bar.ytmusic-player-bar {
+        --paper-slider-knob-color: var(--ytm-accent) !important;
+        --paper-slider-knob-start-color: var(--ytm-accent) !important;
+        --paper-slider-knob-start-border-color: var(--ytm-accent) !important;
+      }
+
+      /* 10. Jump to Current Lyric Floating Pill */
+      #ytm-jump-active-btn {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: var(--ytm-accent);
+        color: #fff;
+        border: none;
+        border-radius: 20px;
+        padding: 7px 16px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 14px var(--ytm-accent);
+        opacity: 0;
+        pointer-events: none;
+        transition: all 0.25s ease;
+        z-index: 10;
+      }
+      #ytm-jump-active-btn.visible {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      /* 11. Empty & Error States */
+      .ytm-empty-state {
+        text-align: center;
+        padding: 50px 10px;
+        user-select: none;
+      }
+      .ytm-empty-icon {
+        font-size: 34px;
+        color: var(--ytm-accent);
+        margin-bottom: 8px;
+        opacity: 0.85;
+      }
+      .ytm-empty-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #fff;
+        margin-bottom: 4px;
+      }
+      .ytm-empty-sub {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.45);
+        line-height: 1.4;
+        margin-bottom: 12px;
+      }
+      .ytm-retry-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: #fff;
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .ytm-retry-btn:hover {
+        background: var(--ytm-accent);
+        border-color: var(--ytm-accent);
+      }
+
+      /* 12. Centered Appearance & Settings Modal */
+      #ytm-prefs-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.65);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        box-sizing: border-box;
+        z-index: 1000000;
+        font-family: var(--ytm-font);
+      }
+      #ytm-prefs-modal.active {
+        display: flex;
+      }
+      .ytm-prefs-box {
+        background: rgba(18, 16, 26, 0.94);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 22px;
+        box-shadow: 0 32px 80px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06);
+        width: min(420px, 92vw);
+        max-height: 85vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        color: #fff;
+        animation: ytmModalFadeIn 0.2s ease-out;
+      }
+      @keyframes ytmModalFadeIn {
+        from { opacity: 0; transform: scale(0.96); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      .ytm-prefs-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 14px;
+        font-weight: 700;
+        padding: 16px 20px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      #ytm-prefs-close {
+        background: none;
+        border: none;
+        color: #aaa;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 6px;
+        line-height: 1;
+      }
+      #ytm-prefs-close:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .ytm-prefs-content {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        padding: 20px;
+        overflow-y: auto;
+        font-size: 13px;
+      }
+      .ytm-pref-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .ytm-pref-toggle input[type="checkbox"] {
+        accent-color: var(--ytm-accent);
+        cursor: pointer;
+        width: 16px;
+        height: 16px;
+      }
+      .ytm-pref-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .ytm-pref-row select {
+        background: #24222d;
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        padding: 5px 10px;
+        font-size: 12px;
+        font-family: inherit;
+      }
+      .ytm-pref-row input[type="color"] {
+        border: none;
+        width: 32px;
+        height: 30px;
+        border-radius: 6px;
+        background: none;
+        cursor: pointer;
+      }
+      .ytm-pref-col {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .ytm-pref-slider-meta {
+        display: flex;
+        justify-content: space-between;
+        opacity: 0.85;
+        font-size: 12px;
+      }
+      .ytm-pref-col input[type="range"] {
+        accent-color: var(--ytm-accent);
+        cursor: pointer;
+      }
+    `;
+
+    document.head.appendChild(style);
+
+    // Centered Settings Modal attached to body
+    const modal = document.createElement('div');
+    modal.id = 'ytm-prefs-modal';
+    modal.innerHTML = `
+      <div class="ytm-prefs-box">
         <div class="ytm-prefs-header">
           <span>Appearance & Engine Settings</span>
           <button id="ytm-prefs-close" type="button">✕</button>
@@ -853,10 +1562,10 @@
 
           <div class="ytm-pref-col">
             <div class="ytm-pref-slider-meta">
-              <span>PWA Lyrics Font Size</span>
-              <span id="pref-pwa-size-label">${prefs.pwaFontSize}px</span>
+              <span>Lyrics Font Size</span>
+              <span id="pref-lyrics-size-label">${prefs.lyricsFontSize}px</span>
             </div>
-            <input type="range" id="pref-pwa-size" min="13" max="22" step="1" value="${prefs.pwaFontSize}">
+            <input type="range" id="pref-lyrics-size" min="14" max="26" step="1" value="${prefs.lyricsFontSize}">
           </div>
 
           <div class="ytm-pref-col">
@@ -868,204 +1577,17 @@
           </div>
         </div>
       </div>
-      <div id="ytm-resize-handle" title="Drag to resize window"></div>
     `;
 
-    const style = document.createElement('style');
-    style.textContent = `
-      :root {
-        --ytm-accent: ${prefs.accentColor};
-        --ytm-font: ${getCSSFont()};
-        --ytm-pwa-font-size: ${prefs.pwaFontSize}px;
-      }
-      #ytm-glass-card {
-        position: fixed; right: 28px; bottom: 100px; width: 350px; height: 460px;
-        min-width: 300px; min-height: 240px; max-width: 800px; max-height: 900px;
-        backdrop-filter: blur(32px) saturate(210%); -webkit-backdrop-filter: blur(32px) saturate(210%);
-        border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 20px;
-        box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.06);
-        color: #fff; z-index: 99999; display: flex; flex-direction: column; overflow: hidden;
-        font-family: var(--ytm-font);
-      }
-      #ytm-glass-card.animating-bounds {
-        transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
-      }
-      #ytm-glass-card.animating-height {
-        transition: height 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-      }
-      #ytm-glass-card.expanded {
-        position: fixed !important;
-        top: 20px !important;
-        bottom: 96px !important;
-        left: 50% !important;
-        right: auto !important;
-        transform: translateX(-50%) !important;
-        width: min(920px, calc(100vw - 48px)) !important;
-        height: auto !important;
-        border-radius: 24px !important;
-        box-shadow: 0 32px 80px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.14) !important;
-        z-index: 99999 !important;
-      }
-      #ytm-glass-card.expanded #ytm-resize-handle { display: none !important; }
-      #ytm-glass-card.expanded #ytm-card-drag-handle { cursor: default !important; }
-      #ytm-glass-card.expanded #ytm-drag-indicator { display: none !important; }
-      #ytm-glass-card.expanded .ytm-lrc-row {
-        font-size: calc(var(--ytm-pwa-font-size) + 4px);
-        line-height: 1.65;
-        padding: 8px 14px;
-      }
-      #ytm-glass-card.expanded .ytm-lrc-row.active {
-        font-size: calc(var(--ytm-pwa-font-size) + 8px);
-      }
-      #ytm-glass-card.minimized { height: 58px !important; min-height: 58px !important; }
-      #ytm-glass-card.minimized #ytm-lyrics-scroll-container,
-      #ytm-glass-card.minimized #ytm-prefs-modal,
-      #ytm-glass-card.minimized #ytm-resize-handle { display: none !important; }
-      #ytm-card-header {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 12px 16px; background: rgba(0, 0, 0, 0.2);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08); user-select: none;
-      }
-      #ytm-card-drag-handle { display: flex; align-items: center; gap: 10px; cursor: grab; flex: 1; min-width: 0; }
-      #ytm-card-drag-handle:active { cursor: grabbing; }
-      #ytm-drag-indicator { opacity: 0.35; font-size: 16px; line-height: 1; }
-      #ytm-track-meta { overflow: hidden; flex: 1; min-width: 0; padding-right: 8px; }
-      #ytm-ui-title-container { overflow: hidden; white-space: nowrap; }
-      #ytm-ui-title { display: inline-block; font-size: 13px; font-weight: 600; }
-      #ytm-ui-title.is-marquee { animation: ytmMarquee 8s ease-in-out infinite alternate; }
-      @keyframes ytmMarquee {
-        0%, 20% { transform: translateX(0); }
-        80%, 100% { transform: translateX(calc(-100% + 150px)); }
-      }
-      #ytm-ui-artist { font-size: 11px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ytm-accent); font-weight: 600; }
-      #ytm-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-      #ytm-actions button {
-        background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.08);
-        color: #eee; padding: 5px 9px; border-radius: 9px; font-size: 11px; font-weight: 600;
-        cursor: pointer; transition: all 0.2s;
-      }
-      #ytm-actions button:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
-      #ytm-actions button#ytm-pip-btn:hover { background: var(--ytm-accent); color: #fff; }
+    document.body.appendChild(modal);
 
-      #ytm-lyrics-scroll-container {
-        flex: 1; overflow-y: auto; padding: 18px 16px; scroll-behavior: smooth;
-        mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
-        -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
-      }
-      #ytm-lyrics-scroll-container::-webkit-scrollbar { width: 4px; }
-      #ytm-lyrics-scroll-container::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
-      #ytm-lyrics-list { display: flex; flex-direction: column; gap: 14px; padding: 20px 0; }
-      .ytm-lrc-row {
-        opacity: 0.35; font-size: var(--ytm-pwa-font-size); line-height: 1.45; cursor: pointer;
-        transition: all 0.2s ease; border-radius: 8px; padding: 4px 6px;
-      }
-      .ytm-lrc-row:hover { opacity: 0.85; background: rgba(255, 255, 255, 0.08); }
-      .ytm-lrc-row.active {
-        opacity: 1; font-weight: 700; font-size: calc(var(--ytm-pwa-font-size) + 2px);
-        color: var(--ytm-accent); transform: scale(1.02); transform-origin: left center;
-        text-shadow: 0 0 16px var(--ytm-accent);
-      }
-      .ytm-plain-lyrics-view {
-        white-space: pre-wrap; font-size: var(--ytm-pwa-font-size); line-height: 1.6;
-        opacity: 0.85; padding: 10px 4px;
-      }
-
-      #ytm-prefs-modal {
-        position: absolute; inset: 0; background: rgba(10, 9, 14, 0.95);
-        display: none; flex-direction: column; z-index: 10; padding: 16px;
-      }
-      #ytm-prefs-modal.active { display: flex; }
-      .ytm-prefs-header {
-        display: flex; justify-content: space-between; align-items: center;
-        font-size: 13px; font-weight: 700; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-      }
-      #ytm-prefs-close { background: none; border: none; color: #aaa; font-size: 14px; cursor: pointer; }
-      #ytm-prefs-close:hover { color: #fff; }
-      .ytm-prefs-content { display: flex; flex-direction: column; gap: 16px; padding-top: 14px; overflow-y: auto; font-size: 12px; }
-      .ytm-pref-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
-      .ytm-pref-row { display: flex; justify-content: space-between; align-items: center; }
-      .ytm-pref-row select { background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; padding: 3px 6px; }
-      .ytm-pref-row input[type="color"] { border: none; width: 28px; height: 26px; border-radius: 4px; background: none; cursor: pointer; }
-      .ytm-pref-col { display: flex; flex-direction: column; gap: 6px; }
-      .ytm-pref-slider-meta { display: flex; justify-content: space-between; opacity: 0.8; }
-      .ytm-pref-col input[type="range"] { accent-color: var(--ytm-accent); cursor: pointer; }
-
-      #ytm-resize-handle {
-        position: absolute; right: 2px; bottom: 2px; width: 16px; height: 16px;
-        cursor: se-resize; background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.35) 50%);
-        border-bottom-right-radius: 18px; z-index: 5;
-      }
-      .ytm-empty-state { text-align: center; padding: 50px 10px; user-select: none; }
-      .ytm-empty-icon { font-size: 34px; color: var(--ytm-accent); margin-bottom: 8px; opacity: 0.85; }
-      .ytm-empty-title { font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 4px; }
-      .ytm-empty-sub { font-size: 12px; color: rgba(255, 255, 255, 0.45); line-height: 1.4; margin-bottom: 12px; }
-      .ytm-retry-btn {
-        background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.15);
-        color: #fff; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600;
-        cursor: pointer; transition: all 0.2s;
-      }
-      .ytm-retry-btn:hover { background: var(--ytm-accent); border-color: var(--ytm-accent); }
-      #ytm-jump-active-btn {
-        position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%) translateY(15px);
-        background: var(--ytm-accent); color: #fff; border: none; border-radius: 20px;
-        padding: 6px 14px; font-size: 11px; font-weight: 700; cursor: pointer;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45); opacity: 0; pointer-events: none;
-        transition: all 0.25s ease; z-index: 5;
-      }
-      #ytm-jump-active-btn.visible {
-        opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0);
-      }
-    `;
-
-    document.head.appendChild(style);
-    document.body.appendChild(card);
-
-    // Add Jump to Current Lyric pill
-    const jumpBtn = document.createElement('button');
-    jumpBtn.id = 'ytm-jump-active-btn';
-    jumpBtn.type = 'button';
-    jumpBtn.textContent = '↓ Current Lyric';
-    card.appendChild(jumpBtn);
-
-    applyTheme();
-    setupDraggable(card);
-    setupResizable(card);
-
-    const scrollContainer = card.querySelector('#ytm-lyrics-scroll-container');
-    if (scrollContainer) {
-      const handleUserScroll = () => {
-        isUserScrolling = true;
-        if (lastActiveIdx >= 0 && cachedDomRows.length > 0) {
-          jumpBtn.classList.add('visible');
-        }
-        clearTimeout(userScrollTimeout);
-        userScrollTimeout = setTimeout(() => {
-          isUserScrolling = false;
-          jumpBtn.classList.remove('visible');
-        }, 3500);
-      };
-      scrollContainer.addEventListener('wheel', handleUserScroll, { passive: true });
-      scrollContainer.addEventListener('touchmove', handleUserScroll, { passive: true });
-    }
-
-    jumpBtn.addEventListener('click', () => {
-      isUserScrolling = false;
-      jumpBtn.classList.remove('visible');
-      if (lastActiveIdx >= 0 && cachedDomRows[lastActiveIdx]) {
-        cachedDomRows[lastActiveIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+    modal.querySelector('#ytm-prefs-close')?.addEventListener('click', closePrefsModal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closePrefsModal();
     });
 
-    const prefsModal = card.querySelector('#ytm-prefs-modal');
-    card.querySelector('#ytm-gear-btn')?.addEventListener('click', () => {
-      prefsModal?.classList.add('active');
-    });
-    card.querySelector('#ytm-prefs-close')?.addEventListener('click', () => {
-      prefsModal?.classList.remove('active');
-    });
-
-    const syncCb = card.querySelector('#pref-sync-album');
-    const accentRow = card.querySelector('#pref-accent-row');
+    const syncCb = modal.querySelector('#pref-sync-album');
+    const accentRow = modal.querySelector('#pref-accent-row');
     if (syncCb && accentRow) {
       syncCb.addEventListener('change', () => {
         prefs.syncAlbumArt = syncCb.checked;
@@ -1076,12 +1598,12 @@
       });
     }
 
-    card.querySelector('#pref-accent-color')?.addEventListener('input', (e) => {
+    modal.querySelector('#pref-accent-color')?.addEventListener('input', (e) => {
       prefs.accentColor = e.target.value;
       savePrefs();
     });
 
-    const fontSelect = card.querySelector('#pref-font-family');
+    const fontSelect = modal.querySelector('#pref-font-family');
     if (fontSelect) {
       fontSelect.value = prefs.fontFamily;
       fontSelect.addEventListener('change', (e) => {
@@ -1090,8 +1612,8 @@
       });
     }
 
-    const pipSlider = card.querySelector('#pref-pip-size');
-    const pipLabel = card.querySelector('#pref-pip-size-label');
+    const pipSlider = modal.querySelector('#pref-pip-size');
+    const pipLabel = modal.querySelector('#pref-pip-size-label');
     if (pipSlider) {
       pipSlider.addEventListener('input', (e) => {
         prefs.pipFontSize = e.target.value;
@@ -1100,18 +1622,18 @@
       });
     }
 
-    const pwaSlider = card.querySelector('#pref-pwa-size');
-    const pwaLabel = card.querySelector('#pref-pwa-size-label');
-    if (pwaSlider) {
-      pwaSlider.addEventListener('input', (e) => {
-        prefs.pwaFontSize = e.target.value;
-        if (pwaLabel) pwaLabel.textContent = `${prefs.pwaFontSize}px`;
+    const lyricsSlider = modal.querySelector('#pref-lyrics-size');
+    const lyricsLabel = modal.querySelector('#pref-lyrics-size-label');
+    if (lyricsSlider) {
+      lyricsSlider.addEventListener('input', (e) => {
+        prefs.lyricsFontSize = e.target.value;
+        if (lyricsLabel) lyricsLabel.textContent = `${prefs.lyricsFontSize}px`;
         savePrefs();
       });
     }
 
-    const offsetSlider = card.querySelector('#pref-offset-slider');
-    const offsetLabel = card.querySelector('#pref-offset-label');
+    const offsetSlider = modal.querySelector('#pref-offset-slider');
+    const offsetLabel = modal.querySelector('#pref-offset-label');
     if (offsetSlider) {
       offsetSlider.addEventListener('input', (e) => {
         prefs.timeOffsetMs = parseInt(e.target.value, 10);
@@ -1120,94 +1642,15 @@
       });
     }
 
-    const expandBtn = card.querySelector('#ytm-expand-btn');
-    let prevBounds = null;
-
-    function toggleExpand() {
-      const isExpanded = card.classList.contains('expanded');
-      card.classList.add('animating-bounds');
-
-      if (isExpanded) {
-        card.classList.remove('expanded');
-        if (expandBtn) {
-          expandBtn.textContent = '⛶';
-          expandBtn.title = 'Expanded Mode (Theatre View)';
-        }
-        if (prevBounds) {
-          card.style.left = prevBounds.left || '';
-          card.style.top = prevBounds.top || '';
-          card.style.width = prevBounds.width || '';
-          card.style.height = prevBounds.height || '';
-          card.style.right = prevBounds.right || '';
-          card.style.bottom = prevBounds.bottom || '';
-          card.style.transform = '';
-        }
-      } else {
-        if (card.classList.contains('minimized')) {
-          card.classList.remove('minimized');
-          if (minBtn) minBtn.textContent = '–';
-        }
-        prevBounds = {
-          left: card.style.left,
-          top: card.style.top,
-          width: card.style.width,
-          height: card.style.height,
-          right: card.style.right,
-          bottom: card.style.bottom
-        };
-        card.classList.add('expanded');
-        if (expandBtn) {
-          expandBtn.textContent = '🗗';
-          expandBtn.title = 'Exit Expanded Mode (Esc)';
-        }
-      }
-
-      setTimeout(() => {
-        card.classList.remove('animating-bounds');
-      }, 300);
-    }
-
-    expandBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleExpand();
-    });
-
-    card.querySelector('#ytm-pip-btn')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      triggerPiP();
-    });
-
-    const minBtn = card.querySelector('#ytm-min-btn');
-    if (minBtn) {
-      minBtn.addEventListener('click', () => {
-        card.classList.add('animating-height');
-        card.classList.toggle('minimized');
-        minBtn.textContent = card.classList.contains('minimized') ? '+' : '–';
-        setTimeout(() => { card.classList.remove('animating-height'); }, 300);
-      });
-    }
-
-    // Double click header to toggle minimize/maximize or exit expanded mode (macOS standard)
-    const dragHandle = card.querySelector('#ytm-card-drag-handle');
-    if (dragHandle) {
-      dragHandle.addEventListener('dblclick', () => {
-        if (card.classList.contains('expanded')) {
-          toggleExpand();
-        } else {
-          card.classList.add('animating-height');
-          card.classList.toggle('minimized');
-          if (minBtn) minBtn.textContent = card.classList.contains('minimized') ? '+' : '–';
-          setTimeout(() => { card.classList.remove('animating-height'); }, 300);
-        }
-      });
-    }
-
-    // Global keyboard shortcuts: Option+P for PiP, Escape for Expanded Mode, Option+Arrow for 10s Seek
+    // Global keyboard shortcuts: Option+P for PiP, Escape for Modal, Option+Arrow for 10s Seek
     window.addEventListener('keydown', (e) => {
       if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
 
-      if (e.key === 'Escape' && card.classList.contains('expanded')) {
-        toggleExpand();
+      if (e.key === 'Escape') {
+        const m = document.getElementById('ytm-prefs-modal');
+        if (m && m.classList.contains('active')) {
+          closePrefsModal();
+        }
       }
       if (e.altKey && (e.key === 'p' || e.key === 'P' || e.code === 'KeyP')) {
         e.preventDefault();
@@ -1232,96 +1675,116 @@
         drawPiPFrame();
       }
     });
+
+    applyTheme();
+    ensurePlayerGlassInjected();
   }
 
-  function setupDraggable(el) {
-    const handle = el.querySelector('#ytm-card-drag-handle');
-    if (!handle) return;
-    let offsetX = 0, offsetY = 0, isDragging = false;
+  function ensureAmbientBackdrop() {
+    const playerPage = getPlayerPage();
+    if (!playerPage) return;
 
-    handle.addEventListener('mousedown', (e) => {
-      if (el.classList.contains('expanded')) return;
-      isDragging = true;
-      offsetX = e.clientX - el.getBoundingClientRect().left;
-      offsetY = e.clientY - el.getBoundingClientRect().top;
-      document.body.style.userSelect = 'none';
-    });
-
-    window.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      const left = Math.max(10, Math.min(window.innerWidth - el.offsetWidth - 10, e.clientX - offsetX));
-      const top = Math.max(10, Math.min(window.innerHeight - el.offsetHeight - 10, e.clientY - offsetY));
-      el.style.left = left + 'px';
-      el.style.top = top + 'px';
-      el.style.right = 'auto';
-      el.style.bottom = 'auto';
-    });
-
-    window.addEventListener('mouseup', () => {
-      if (isDragging) {
-        isDragging = false;
-        document.body.style.userSelect = '';
-        prefs.cardLeft = el.style.left;
-        prefs.cardTop = el.style.top;
-        savePrefs();
-      }
-    });
-
-    window.addEventListener('resize', () => {
-      if (!el.style.left || el.classList.contains('expanded')) return;
-      const curLeft = parseInt(el.style.left, 10);
-      const curTop = parseInt(el.style.top, 10);
-      const maxLeft = Math.max(10, window.innerWidth - el.offsetWidth - 10);
-      const maxTop = Math.max(10, window.innerHeight - el.offsetHeight - 10);
-      if (curLeft > maxLeft) el.style.left = maxLeft + 'px';
-      if (curTop > maxTop) el.style.top = maxTop + 'px';
-    });
+    let backdrop = document.getElementById('ytm-ambient-backdrop');
+    if (backdrop && backdrop.parentNode !== playerPage) {
+      backdrop.remove();
+      backdrop = null;
+    }
+    if (!backdrop) {
+      backdrop = document.createElement('div');
+      backdrop.id = 'ytm-ambient-backdrop';
+      playerPage.insertBefore(backdrop, playerPage.firstChild);
+      applyTheme();
+    }
   }
 
-  function setupResizable(el) {
-    const handle = el.querySelector('#ytm-resize-handle');
-    if (!handle) return;
-    let isResizing = false, startW = 0, startH = 0, startX = 0, startY = 0;
+  function ensurePlayerGlassInjected() {
+    ensureAmbientBackdrop();
 
-    handle.addEventListener('mousedown', (e) => {
-      if (el.classList.contains('expanded')) return;
-      isResizing = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      startW = el.offsetWidth;
-      startH = el.offsetHeight;
+    const playerPage = getPlayerPage();
+    if (!playerPage) return;
 
-      // Fix coordinate anchoring: convert right/bottom to left/top so resizing tracks mouse naturally
-      const rect = el.getBoundingClientRect();
-      el.style.left = rect.left + 'px';
-      el.style.top = rect.top + 'px';
-      el.style.right = 'auto';
-      el.style.bottom = 'auto';
+    // 2. Lyrics Container in Side Panel
+    const sidePanel = playerPage.querySelector('#side-panel');
+    if (sidePanel && !document.getElementById('ytm-tab-lyrics-container')) {
+      const lyricsContainer = document.createElement('div');
+      lyricsContainer.id = 'ytm-tab-lyrics-container';
+      lyricsContainer.innerHTML = `
+        <div id="ytm-tab-header">
+          <div id="ytm-track-meta">
+            <div id="ytm-ui-title-container">
+              <span id="ytm-ui-title">${currentSong.title || 'Waiting for playback...'}</span>
+            </div>
+            <div id="ytm-ui-artist">${currentSong.artist || 'YouTube Music'}</div>
+          </div>
+          <div id="ytm-actions">
+            <button id="ytm-pip-btn" type="button" title="Pop out over other apps (macOS PiP)">⤢ Pop Out</button>
+            <button id="ytm-gear-btn" type="button" title="Settings">⚙</button>
+          </div>
+        </div>
+        <div id="ytm-lyrics-scroll-container">
+          <div id="ytm-lyrics-list">
+            <div class="ytm-empty-state">
+              <div class="ytm-empty-icon">♫</div>
+              <div class="ytm-empty-title">Ready for music</div>
+              <div class="ytm-empty-sub">Play a track to view synchronized lyrics</div>
+            </div>
+          </div>
+        </div>
+        <button id="ytm-jump-active-btn" type="button">↓ Current Lyric</button>
+      `;
 
-      document.body.style.userSelect = 'none';
-      e.stopPropagation();
-      e.preventDefault();
-    });
+      sidePanel.appendChild(lyricsContainer);
 
-    window.addEventListener('mousemove', (e) => {
-      if (!isResizing) return;
-      const newW = Math.max(300, Math.min(800, startW + (e.clientX - startX)));
-      const newH = Math.max(240, Math.min(900, startH + (e.clientY - startY)));
-      el.style.width = newW + 'px';
-      el.style.height = newH + 'px';
-    });
+      lyricsContainer.querySelector('#ytm-pip-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        triggerPiP();
+      });
 
-    window.addEventListener('mouseup', () => {
-      if (isResizing) {
-        isResizing = false;
-        document.body.style.userSelect = '';
-        prefs.cardWidth = el.offsetWidth;
-        prefs.cardHeight = el.offsetHeight;
-        prefs.cardLeft = el.style.left;
-        prefs.cardTop = el.style.top;
-        savePrefs();
+      lyricsContainer.querySelector('#ytm-gear-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPrefsModal();
+      });
+
+      const jumpBtn = lyricsContainer.querySelector('#ytm-jump-active-btn');
+      jumpBtn?.addEventListener('click', () => {
+        isUserScrolling = false;
+        jumpBtn.classList.remove('visible');
+        if (lastActiveIdx >= 0 && cachedDomRows[lastActiveIdx]) {
+          scrollLyricsToElement(cachedDomRows[lastActiveIdx], true);
+        }
+      });
+
+      const scrollContainer = lyricsContainer.querySelector('#ytm-lyrics-scroll-container');
+      if (scrollContainer) {
+        const handleUserScroll = () => {
+          isUserScrolling = true;
+          if (lastActiveIdx >= 0 && cachedDomRows.length > 0 && jumpBtn) {
+            jumpBtn.classList.add('visible');
+          }
+          clearTimeout(userScrollTimeout);
+          userScrollTimeout = setTimeout(() => {
+            isUserScrolling = false;
+            if (jumpBtn) jumpBtn.classList.remove('visible');
+          }, 3500);
+        };
+        scrollContainer.addEventListener('wheel', handleUserScroll, { passive: true });
+        scrollContainer.addEventListener('touchmove', handleUserScroll, { passive: true });
       }
-    });
+
+      // If lyrics are already available in memory, render them
+      if (lyricsData.length > 0) {
+        renderLyricsDOM();
+      } else if (lyricState === 'empty') {
+        renderEmptyState();
+      } else if (lyricState === 'searching') {
+        renderSearchingState();
+      } else if (lyricState === 'rate_limited') {
+        renderRateLimitedState();
+      }
+    }
+
+    setupTabsWatcher();
+    updateTabVisibility();
   }
 
   // 8. Robust LRC Parser (Multi-Timestamp & Fraction Aware)
@@ -1730,7 +2193,7 @@
         const activeRow = cachedDomRows[activeIdx];
         activeRow.classList.add('active');
         if (!isUserScrolling) {
-          activeRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          scrollLyricsToElement(activeRow, true);
         }
       }
       lastActiveIdx = activeIdx;
@@ -1758,8 +2221,10 @@
       bindVideoEvents(video);
     }
 
-    // Dynamic Polling for Track & Video Element Changes
+    // Dynamic Polling for Track & Video Element Changes & Player Glass Injection
     setInterval(() => {
+      ensurePlayerGlassInjected();
+
       const liveVideo = getYTMVideo();
       if (liveVideo && liveVideo !== hookedVideo) {
         bindVideoEvents(liveVideo);
@@ -1813,6 +2278,6 @@
   initPiPCanvas();
   drawPiPFrame();
   startRenderLoop();
-  injectFloatingUI();
+  injectPlayerGlassUI();
   hookPlayer();
 })();
