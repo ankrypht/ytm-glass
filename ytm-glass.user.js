@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Music Glass: Apple Redesign, Synced Lyrics & PiP
 // @namespace    https://github.com/ankrypht/ytm-glass
-// @version      2.0.0
+// @version      2.1.0
 // @description  Apple Music-inspired frosted glass redesign, dynamic ambient mesh glow, synchronized lyrics & native Picture-in-Picture for YouTube Music on Safari (macOS).
 // @author       ankrypht
 // @license      GPL-3.0-or-later
@@ -72,6 +72,7 @@
   let isUserScrolling = false;
   let userScrollTimeout = null;
   let lastPlayingTimestamp = 0;
+  let sidePanelResizeObserver = null;
 
   // Rate Limiting & Request Tokens
   let activeRequestId = 0;
@@ -258,16 +259,16 @@
     }
 
     if (imgUrl === lastExtractedUrl) return;
-    lastExtractedUrl = imgUrl;
 
     if (paletteCache.has(imgUrl)) {
+      lastExtractedUrl = imgUrl;
       activeTheme = paletteCache.get(imgUrl);
       applyTheme();
       drawPiPFrame();
       return;
     }
 
-    const currentArtUrl = imgUrl;
+    const requestedKey = currentKey; // Track track key for which extraction started
     GM_xmlhttpRequest({
       method: 'GET',
       url: imgUrl,
@@ -280,7 +281,8 @@
 
         img.onload = () => {
           URL.revokeObjectURL(blobUrl);
-          if (currentSong.artwork !== currentArtUrl) return; // Stale artwork check
+          // Only drop if track changed to a completely different track while downloading
+          if (currentKey && requestedKey && currentKey !== requestedKey) return;
 
           try {
             const sc = document.createElement('canvas');
@@ -320,7 +322,8 @@
               bgEnd: `rgb(${Math.floor(avgR * 1.8)}, ${Math.floor(avgG * 1.8)}, ${Math.floor(avgB * 2.2)})`
             };
 
-            paletteCache.set(currentArtUrl, themeResult);
+            lastExtractedUrl = imgUrl;
+            paletteCache.set(imgUrl, themeResult);
             activeTheme = themeResult;
             applyTheme();
             drawPiPFrame();
@@ -362,6 +365,13 @@
         linear-gradient(150deg, ${curBgStart} 0%, #030307 100%)
       `;
     }
+
+    // Neutralize native YouTube Music background variables so our dynamic ambient mesh shines through
+    const playerPage = getPlayerPage();
+    if (playerPage) {
+      playerPage.style.setProperty('--ytmusic-player-page-background', 'transparent', 'important');
+      playerPage.style.setProperty('--ytmusic-player-page-side-panel-background', 'transparent', 'important');
+    }
   }
 
   // 4. Initializing Canvas Pipeline
@@ -369,6 +379,7 @@
     if (canvas) return;
 
     canvas = document.createElement('canvas');
+    canvas.id = 'ytm-pip-stream-canvas';
     canvas.width = 520;
     canvas.height = 520;
     ctx = canvas.getContext('2d');
@@ -378,9 +389,6 @@
     pipVideo.muted = true;
     pipVideo.playsInline = true;
     pipVideo.autoplay = true;
-    pipVideo.setAttribute('muted', '');
-    pipVideo.setAttribute('playsinline', '');
-    pipVideo.setAttribute('autoplay', '');
 
     pipVideo.style.cssText = `
       position: fixed; bottom: 0; left: 0; width: 520px; height: 520px;
@@ -782,7 +790,6 @@
   }
 
   // 7. Player Screen Glass Effect & Integrated Lyrics Tab UI
-  let activeTabName = 'UP NEXT';
   let tabsObserver = null;
 
   function openPrefsModal() {
@@ -843,16 +850,18 @@
     if (!playerPage) return;
 
     const currentTab = forcedTab || detectActiveTabName();
-    activeTabName = currentTab;
-    playerPage.setAttribute('data-ytm-active-tab', currentTab);
+    const previousTab = playerPage.getAttribute('data-ytm-active-tab');
+    if (previousTab !== currentTab) {
+      playerPage.setAttribute('data-ytm-active-tab', currentTab);
+    }
 
     const lyricsContainer = document.getElementById('ytm-tab-lyrics-container');
     if (!lyricsContainer) return;
 
     if (currentTab === 'LYRICS') {
       lyricsContainer.style.setProperty('display', 'flex', 'important');
-      if (lastActiveIdx >= 0 && cachedDomRows[lastActiveIdx] && !isUserScrolling) {
-        scrollLyricsToElement(cachedDomRows[lastActiveIdx], true);
+      if (previousTab !== 'LYRICS' && lastActiveIdx >= 0 && cachedDomRows[lastActiveIdx] && !isUserScrolling) {
+        scrollLyricsToElement(cachedDomRows[lastActiveIdx], false);
       }
     } else {
       lyricsContainer.style.setProperty('display', 'none', 'important');
@@ -951,6 +960,7 @@
         height: 100% !important;
         z-index: 0 !important;
         pointer-events: none !important;
+        overflow: hidden !important;
         background-repeat: no-repeat !important;
         background-size: cover !important;
         background:
@@ -1039,11 +1049,26 @@
         border-radius: 14px !important;
       }
 
-      /* 1. Player Page Base (ZERO Layout Overrides: Native Size, Placement & Transitions) */
+      /* 1. Player Page Base (ZERO Layout Overrides & Stale Native Background Elimination) */
       ytmusic-player-page#player-page,
       ytmusic-player-page {
         background: transparent !important;
+        --ytmusic-player-page-background: transparent !important;
+        --ytmusic-player-page-side-panel-background: transparent !important;
         font-family: var(--ytm-font) !important;
+      }
+
+      /* Completely neutralize native YTM background layers & canvases so only our dynamic ambient mesh shines through */
+      ytmusic-player-page #background,
+      ytmusic-player-page .background,
+      #background.ytmusic-player-page,
+      ytmusic-player-page ytmusic-background-overlay-renderer,
+      ytmusic-player-page #backdrop,
+      ytmusic-player-page canvas:not(#ytm-pip-stream-canvas) {
+        background: transparent !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
       }
 
       /* 2. Album Artwork Glow (Left Panel: Native Size & Placement) */
@@ -1067,25 +1092,25 @@
         border-radius: 20px !important;
       }
 
-      /* 3. Frosted Glass Side Panel (Right Panel: Centered Vertically & Spaced from Media) */
+      /* 3. Frosted Glass Side Panel (Right Panel: Perfectly Aligned with Art & Dynamic Theme) */
       ytmusic-player-page #side-panel {
         position: relative !important;
         z-index: 2 !important;
-        background: rgba(12, 10, 20, 0.55) !important;
+        background: color-mix(in srgb, var(--ytm-bg-start, #0c0a14) 22%, rgba(12, 10, 20, 0.60)) !important;
         backdrop-filter: blur(40px) saturate(210%) !important;
         -webkit-backdrop-filter: blur(40px) saturate(210%) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 24px !important;
-        box-shadow: 0 28px 80px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
-        align-self: center !important;
-        margin: auto clamp(28px, 4vw, 56px) auto clamp(24px, 3vw, 40px) !important;
-        max-height: min(72vh, 520px) !important;
-        height: auto !important;
+        box-shadow: 0 28px 80px rgba(0, 0, 0, 0.65), 0 0 45px var(--ytm-accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+        margin: 0 !important;
+        margin-left: clamp(20px, 2.5vw, 40px) !important;
         padding: 12px 14px 14px 14px !important;
         overflow: hidden !important;
         display: flex !important;
         flex-direction: column !important;
         box-sizing: border-box !important;
+        min-height: 0 !important;
+        transition: box-shadow 1.2s ease, background 1.2s ease !important;
       }
 
       /* 4. Tab Navigation Bar (Full 48px Height, Never Squished) */
@@ -1130,7 +1155,20 @@
         box-shadow: 0 0 12px var(--ytm-accent) !important;
       }
 
-      /* Tab Content / Queue Container Flexibility */
+      /* Tab Content / Queue Container Flexibility & Full Transparency */
+      ytmusic-player-page #side-panel #tab-renderer,
+      ytmusic-player-page #side-panel ytmusic-tab-renderer,
+      ytmusic-player-page #side-panel ytmusic-player-queue,
+      ytmusic-player-page #side-panel #queue,
+      ytmusic-player-page #side-panel ytmusic-section-list-renderer,
+      ytmusic-player-page #side-panel ytmusic-description-shelf-renderer,
+      ytmusic-player-page #side-panel ytmusic-message-renderer,
+      ytmusic-player-page #side-panel .tab-header-container,
+      ytmusic-player-page #side-panel .tab-content,
+      ytmusic-player-page #side-panel #contents,
+      ytmusic-player-page #side-panel #items {
+        background: transparent !important;
+      }
       ytmusic-player-page #tab-renderer,
       ytmusic-player-page ytmusic-tab-renderer {
         flex: 1 1 auto !important;
@@ -1242,13 +1280,9 @@
         mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
         -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
         scrollbar-width: none !important;
-        -ms-overflow-style: none !important;
       }
-      #ytm-lyrics-scroll-container::-webkit-scrollbar,
       ytmusic-player-page #side-panel::-webkit-scrollbar,
-      ytmusic-player-page #side-panel *::-webkit-scrollbar,
-      ytmusic-player-page #tab-renderer::-webkit-scrollbar,
-      ytmusic-player-page ytmusic-tab-renderer::-webkit-scrollbar {
+      ytmusic-player-page #side-panel *::-webkit-scrollbar {
         display: none !important;
         width: 0px !important;
         height: 0px !important;
@@ -1256,7 +1290,6 @@
       ytmusic-player-page #side-panel,
       ytmusic-player-page #side-panel * {
         scrollbar-width: none !important;
-        -ms-overflow-style: none !important;
       }
       #ytm-lyrics-list {
         display: flex;
@@ -1785,6 +1818,73 @@
 
     setupTabsWatcher();
     updateTabVisibility();
+
+    // Height-sync: Match side panel height to album art using ResizeObserver
+    if (!sidePanelResizeObserver) {
+      const sPanel = playerPage.querySelector('#side-panel');
+      const mainPanel = playerPage.querySelector('#main-panel');
+      if (sPanel && mainPanel) {
+        let lastObservedArtType = null; // Track 'video' vs 'image' to detect switches
+        let syncDebounceTimer = null;
+
+        const syncHeight = () => {
+          // Use mainPanel height as the consistent reference — it's managed by
+          // YouTube Music's native layout and always reflects the correct available
+          // height regardless of whether the content is a square art or 16:9 video.
+          const mainRect = mainPanel.getBoundingClientRect();
+          const panelHeight = mainRect.height;
+          if (panelHeight > 100) {
+            // Subtract bottom margin (12px) so panel doesn't touch the player bar
+            const adjustedHeight = panelHeight - 12;
+            sPanel.style.setProperty('max-height', `${adjustedHeight}px`, 'important');
+            sPanel.style.setProperty('height', `${adjustedHeight}px`, 'important');
+          }
+        };
+
+        // Debounced sync for content-type transitions (song↔video)
+        const debouncedSync = () => {
+          clearTimeout(syncDebounceTimer);
+          syncDebounceTimer = setTimeout(() => {
+            syncHeight();
+            // Second pass after layout settles (video elements can be slow to finalize size)
+            setTimeout(syncHeight, 300);
+          }, 50);
+        };
+
+        // Detect when the content type changes (song art ↔ video)
+        const checkContentSwitch = () => {
+          const hasVideo = !!mainPanel.querySelector('#player video');
+          const currentType = hasVideo ? 'video' : 'image';
+          if (lastObservedArtType !== null && lastObservedArtType !== currentType) {
+            // Content type switched — trigger re-sync with delays for layout to settle
+            debouncedSync();
+            // Additional delayed syncs to catch late layout shifts
+            setTimeout(syncHeight, 500);
+            setTimeout(syncHeight, 1000);
+          }
+          lastObservedArtType = currentType;
+        };
+
+        sidePanelResizeObserver = new ResizeObserver(() => {
+          syncHeight();
+          checkContentSwitch();
+        });
+        sidePanelResizeObserver.observe(mainPanel);
+
+        // Watch for DOM changes inside mainPanel (song-image ↔ video swap)
+        const contentObserver = new MutationObserver(() => {
+          checkContentSwitch();
+          debouncedSync();
+        });
+        contentObserver.observe(mainPanel, { childList: true, subtree: true });
+
+        // Also sync on window resize for cases where the art scales
+        window.addEventListener('resize', syncHeight);
+        // Initial sync
+        syncHeight();
+        checkContentSwitch();
+      }
+    }
   }
 
   // 8. Robust LRC Parser (Multi-Timestamp & Fraction Aware)
@@ -1877,8 +1977,8 @@
     renderSearchingState();
 
     const headers = {
-      'User-Agent': 'YTM-Glass/2.0.0 (Mac Safari PWA Userscript; https://github.com/ankrypht/ytm-glass)',
-      'Lrclib-Client': 'YTM-Glass/2.0.0'
+      'User-Agent': 'YTM-Glass/2.1.0 (Mac Safari PWA Userscript; https://github.com/ankrypht/ytm-glass)',
+      'Lrclib-Client': 'YTM-Glass/2.1.0'
     };
 
     // Step 1: Direct exact match (/api/get) without forcing duration
@@ -2161,8 +2261,11 @@
     }
 
     let artwork = '';
+    const playerPageImg = document.querySelector('ytmusic-player-page #song-image img');
     if (meta?.artwork && meta.artwork.length > 0) {
       artwork = meta.artwork[meta.artwork.length - 1].src;
+    } else if (playerPageImg && playerPageImg.src) {
+      artwork = playerPageImg.src;
     } else if (imgEl && imgEl.src) {
       artwork = imgEl.src;
     }

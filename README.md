@@ -2,9 +2,9 @@
 
 [![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-Install-red.svg?logo=greasemonkey)](https://greasyfork.org/en/scripts/596372-youtube-music-glass-synced-lyrics-pip)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20(Safari)-black.svg?logo=apple)](https://github.com/ankrypht/ytm-glass)
+[![Platform](<https://img.shields.io/badge/Platform-macOS%20(Safari)-black.svg?logo=apple>)](https://github.com/ankrypht/ytm-glass)
 [![Extension](https://img.shields.io/badge/Extension-Userscripts%20by%20Justin%20Wasack-orange.svg)](https://apps.apple.com/app/userscripts/id1463298887)
-[![Version](https://img.shields.io/badge/Version-2.0.0-blue.svg)](https://github.com/ankrypht/ytm-glass)
+[![Version](https://img.shields.io/badge/Version-2.1.0-blue.svg)](https://github.com/ankrypht/ytm-glass)
 
 A complete **Apple Music-inspired frosted glass redesign**, dynamic ambient mesh backdrop, synchronized lyrics, and **Canvas Picture-in-Picture (PiP)** userscript built specifically for **macOS** with **Safari** (and Safari Web Apps / PWA) using the **[Userscripts](https://apps.apple.com/app/userscripts/id1463298887)** extension by Justin Wasack.
 
@@ -74,6 +74,7 @@ Originally created as a standalone synced lyrics and Picture-in-Picture tool, **
 ## 🚀 Setup & Installation (Safari on macOS)
 
 ### Step 1: Install & Enable 'Userscripts' Extension
+
 1. Download and install **[Userscripts](https://apps.apple.com/app/userscripts/id1463298887)** from the Mac App Store.
 2. Open Safari and navigate to **Safari → Settings (⌘,) → Extensions**.
 3. Check the box to enable **Userscripts**.
@@ -84,10 +85,11 @@ Originally created as a standalone synced lyrics and Picture-in-Picture tool, **
 ### Step 2: Install the Script
 
 #### Method 1: Greasy Fork (Recommended) ⭐
+
 > [!TIP]
 > **Why Greasy Fork is Recommended over GitHub:**
-> Installing via Greasy Fork automatically bundles update metadata (`@updateURL` and `@downloadURL`). This allows the **Userscripts** extension to automatically detect, notify, and install updates in the background whenever a new version is released. 
-> 
+> Installing via Greasy Fork automatically bundles update metadata (`@updateURL` and `@downloadURL`). This allows the **Userscripts** extension to automatically detect, notify, and install updates in the background whenever a new version is released.
+>
 > Direct installs from raw GitHub links do not automatically register update hooks in the Userscripts extension, requiring manual re-downloads when new features are added.
 
 1. Go to the script page on **[Greasy Fork](https://greasyfork.org/en/scripts/596372-youtube-music-glass-apple-redesign-synced-lyrics-pip)**.
@@ -96,25 +98,27 @@ Originally created as a standalone synced lyrics and Picture-in-Picture tool, **
 4. Open [music.youtube.com](https://music.youtube.com) and play any track. The player screen will be styled with dynamic frosted glass and synced lyrics will be waiting in the **LYRICS** tab!
 
 #### Method 2: Direct Install from GitHub (Alternative)
+
 If you prefer installing directly from source:
+
 1. Navigate to [music.youtube.com](https://music.youtube.com) in Safari.
 2. Click the **Userscripts** icon (`</>`) in your Safari toolbar.
 3. Click the **+** (New Script) button.
 4. Copy and paste the entire contents of **[ytm-glass.user.js](https://raw.githubusercontent.com/ankrypht/ytm-glass/main/ytm-glass.user.js)** into the editor.
 5. Press <kbd>⌘ Command</kbd> + <kbd>S</kbd> to save.
 
-*(Optional: If you use YouTube Music as a Safari Web App via **File → Add to Dock**, ensure the Userscripts extension is allowed in your Web App profile).*
+_(Optional: If you use YouTube Music as a Safari Web App via **File → Add to Dock**, ensure the Userscripts extension is allowed in your Web App profile)._
 
 ---
 
 ## ⌨️ macOS Keyboard Shortcuts
 
-| Action | Shortcut |
-| :--- | :--- |
+| Action                               | Shortcut                           |
+| :----------------------------------- | :--------------------------------- |
 | **Pop Out Picture-in-Picture (PiP)** | <kbd>⌥ Option</kbd> + <kbd>P</kbd> |
-| **Seek Forward 10 Seconds** | <kbd>⌥ Option</kbd> + <kbd>→</kbd> |
-| **Seek Backward 10 Seconds** | <kbd>⌥ Option</kbd> + <kbd>←</kbd> |
-| **Close Settings Modal** | <kbd>Esc</kbd> |
+| **Seek Forward 10 Seconds**          | <kbd>⌥ Option</kbd> + <kbd>→</kbd> |
+| **Seek Backward 10 Seconds**         | <kbd>⌥ Option</kbd> + <kbd>←</kbd> |
+| **Close Settings Modal**             | <kbd>Esc</kbd>                     |
 
 ---
 
@@ -138,13 +142,16 @@ Click the gear icon (**⚙**) on the lyrics tab header to customize:
 ## ❓ FAQ & Troubleshooting
 
 ### Picture-in-Picture doesn't open
+
 - Ensure you have clicked into the YouTube Music tab at least once (Safari requires a user gesture before video presentation modes can activate).
 - You can also click the **⤢ Pop Out** button directly in the lyrics tab header.
 
 ### Closing PiP resumes music when I wanted it paused
+
 - Safari momentarily pauses background media streams when a PiP window is dismissed. The script includes an auto-resume safeguard if the track was playing within 1.5s prior to closing. If you wish to keep playback paused, pause the music first and wait 2 seconds before closing PiP.
 
 ### Lyrics not found for a track
+
 - Instrumental tracks or newly released songs may not yet be in LRCLIB.
 - The lyrics tab will display an "Instrumental or No Lyrics" screen.
 - Click **↻ Retry Lyrics** to clear the cached negative result and query the API again.
