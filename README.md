@@ -1,12 +1,24 @@
-# YouTube Music Glass Synced Lyrics & PiP 🎵✨
+# YouTube Music Glass: Apple Redesign, Synced Lyrics & PiP 🎵✨
 
 [![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-Install-red.svg?logo=greasemonkey)](https://greasyfork.org/en/scripts/596372-youtube-music-glass-synced-lyrics-pip)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20(Safari)-black.svg?logo=apple)](https://github.com/ankrypht/ytm-glass-lyrics)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20(Safari)-black.svg?logo=apple)](https://github.com/ankrypht/ytm-glass)
 [![Extension](https://img.shields.io/badge/Extension-Userscripts%20by%20Justin%20Wasack-orange.svg)](https://apps.apple.com/app/userscripts/id1463298887)
-[![Version](https://img.shields.io/badge/Version-1.5.0-blue.svg)](https://github.com/ankrypht/ytm-glass-lyrics)
+[![Version](https://img.shields.io/badge/Version-2.0.0-blue.svg)](https://github.com/ankrypht/ytm-glass)
 
-An Apple Music-inspired synchronized lyrics and **Canvas Picture-in-Picture (PiP)** userscript built specifically for **macOS** with **Safari** (and Safari Web Apps / PWA) using the **[Userscripts](https://apps.apple.com/app/userscripts/id1463298887)** extension by Justin Wasack.
+A complete **Apple Music-inspired frosted glass redesign**, dynamic ambient mesh backdrop, synchronized lyrics, and **Canvas Picture-in-Picture (PiP)** userscript built specifically for **macOS** with **Safari** (and Safari Web Apps / PWA) using the **[Userscripts](https://apps.apple.com/app/userscripts/id1463298887)** extension by Justin Wasack.
+
+---
+
+## 🌟 What's New in v2.0
+
+Originally created as a standalone synced lyrics and Picture-in-Picture tool, **v2.0 transforms YouTube Music into a full-fledged Apple Music desktop experience**:
+
+- 🎨 **Complete Player Screen Overhaul**: Real-time ambient mesh gradients extracted from active album artwork, soft glowing artwork halo lighting, and a floating frosted glass side panel (`#side-panel`).
+- 🪟 **Home Screen & Navigation Glass Polish**: Edge-to-edge frosted glass top navigation bar (`ytmusic-nav-bar`), sleek blurred category pill chips, translucent left sidebar guide, and rounded album artwork cards.
+- 📐 **Pixel-Perfect Alignment & Proportions**: Dynamic height synchronization between album art and side panel via a high-performance `ResizeObserver`. Top edges, bottom edges, and vertical centers align identically with zero video collisions on widescreen media.
+- 🎵 **Integrated Native Tab Lyrics**: Synchronized, clickable, auto-scrolling lyrics directly inside YouTube Music's native **LYRICS** tab—no intrusive floating overlays.
+- 🚫 **Edge-to-Edge Fluidity**: Suppresses native right-side scrollbar gutters for seamless, edge-to-edge glass visuals across both regular Safari windows and standalone PWA desktop apps.
 
 ---
 
@@ -88,7 +100,7 @@ If you prefer installing directly from source:
 1. Navigate to [music.youtube.com](https://music.youtube.com) in Safari.
 2. Click the **Userscripts** icon (`</>`) in your Safari toolbar.
 3. Click the **+** (New Script) button.
-4. Copy and paste the entire contents of **[ytm-glass-lyrics.user.js](https://raw.githubusercontent.com/ankrypht/ytm-glass-lyrics/main/ytm-glass-lyrics.user.js)** into the editor.
+4. Copy and paste the entire contents of **[ytm-glass.user.js](https://raw.githubusercontent.com/ankrypht/ytm-glass/main/ytm-glass.user.js)** into the editor.
 5. Press <kbd>⌘ Command</kbd> + <kbd>S</kbd> to save.
 
 *(Optional: If you use YouTube Music as a Safari Web App via **File → Add to Dock**, ensure the Userscripts extension is allowed in your Web App profile).*
@@ -145,5 +157,4 @@ This project is licensed under the **GNU General Public License v3.0** (GPL-3.0)
 
 ---
 
-**Made with ❤️ for macOS & Safari.** Issues and feature requests are welcome on [GitHub Issues](https://github.com/ankrypht/ytm-glass-lyrics/issues).
-
+**Made with ❤️ for macOS & Safari.** Issues and feature requests are welcome on [GitHub Issues](https://github.com/ankrypht/ytm-glass/issues).
