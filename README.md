@@ -4,7 +4,7 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Platform](<https://img.shields.io/badge/Platform-macOS%20(Safari)-black.svg?logo=apple>)](https://github.com/ankrypht/ytm-glass)
 [![Extension](https://img.shields.io/badge/Extension-Userscripts%20by%20Justin%20Wasack-orange.svg)](https://apps.apple.com/app/userscripts/id1463298887)
-[![Version](https://img.shields.io/badge/Version-2.1.0-blue.svg)](https://github.com/ankrypht/ytm-glass)
+[![Version](https://img.shields.io/badge/Version-2.1.1-blue.svg)](https://github.com/ankrypht/ytm-glass)
 
 A complete **Apple Music-inspired frosted glass redesign**, dynamic ambient mesh backdrop, synchronized lyrics, and **Canvas Picture-in-Picture (PiP)** userscript built specifically for **macOS** with **Safari** (and Safari Web Apps / PWA) using the **[Userscripts](https://apps.apple.com/app/userscripts/id1463298887)** extension by Justin Wasack.
 

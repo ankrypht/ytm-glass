@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Music Glass: Apple Redesign, Synced Lyrics & PiP
 // @namespace    https://github.com/ankrypht/ytm-glass
-// @version      2.1.0
+// @version      2.1.1
 // @description  Apple Music-inspired frosted glass redesign, dynamic ambient mesh glow, synchronized lyrics & native Picture-in-Picture for YouTube Music on Safari (macOS).
 // @author       ankrypht
 // @license      GPL-3.0-or-later
@@ -73,6 +73,7 @@
   let userScrollTimeout = null;
   let lastPlayingTimestamp = 0;
   let sidePanelResizeObserver = null;
+  let hookedVideo = null;
 
   // Rate Limiting & Request Tokens
   let activeRequestId = 0;
@@ -86,6 +87,8 @@
   let lastExtractedUrl = '';
   const PERSISTENT_CACHE_KEY = 'ytm_lyrics_cache_v2';
   const MAX_PERSISTENT_ENTRIES = 100;
+  const MAX_MEMORY_CACHE_ENTRIES = 200;
+  const MAX_PALETTE_ENTRIES = 100;
 
   function loadPersistentCache() {
     try {
@@ -102,6 +105,10 @@
 
   function saveToLyricsCache(key, data) {
     if (!key) return;
+    if (lyricsMemoryCache.size >= MAX_MEMORY_CACHE_ENTRIES) {
+      const firstKey = lyricsMemoryCache.keys().next().value;
+      if (firstKey) lyricsMemoryCache.delete(firstKey);
+    }
     lyricsMemoryCache.set(key, data);
     try {
       const obj = {};
@@ -117,23 +124,32 @@
   }
 
   // Utility Functions
+  const alphaColorCache = new Map();
   function colorWithAlpha(colorStr, alpha) {
     if (!colorStr) return `rgba(255, 40, 77, ${alpha})`;
+    const cacheKey = `${colorStr}_${alpha}`;
+    const cached = alphaColorCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    let res = colorStr;
     if (colorStr.startsWith('#')) {
       let c = colorStr.slice(1);
       if (c.length === 3) c = c.split('').map(x => x + x).join('');
       const r = parseInt(c.slice(0, 2), 16) || 0;
       const g = parseInt(c.slice(2, 4), 16) || 0;
       const b = parseInt(c.slice(4, 6), 16) || 0;
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-    if (colorStr.startsWith('rgb')) {
+      res = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    } else if (colorStr.startsWith('rgb')) {
       const m = colorStr.match(/\d+/g);
       if (m && m.length >= 3) {
-        return `rgba(${m[0]}, ${m[1]}, ${m[2]}, ${alpha})`;
+        res = `rgba(${m[0]}, ${m[1]}, ${m[2]}, ${alpha})`;
       }
     }
-    return colorStr;
+    if (alphaColorCache.size > 200) {
+      alphaColorCache.clear();
+    }
+    alphaColorCache.set(cacheKey, res);
+    return res;
   }
 
   function getCanvasFont(weight, size) {
@@ -160,6 +176,9 @@
   }
 
   function getYTMVideo() {
+    if (hookedVideo && hookedVideo.isConnected && hookedVideo !== pipVideo) {
+      return hookedVideo;
+    }
     const videos = Array.from(document.querySelectorAll('video'));
     return videos.find(v => v !== pipVideo && v.classList.contains('html5-main-video')) ||
            videos.find(v => v !== pipVideo) || null;
@@ -323,6 +342,10 @@
             };
 
             lastExtractedUrl = imgUrl;
+            if (paletteCache.size >= MAX_PALETTE_ENTRIES) {
+              const firstKey = paletteCache.keys().next().value;
+              if (firstKey) paletteCache.delete(firstKey);
+            }
             paletteCache.set(imgUrl, themeResult);
             activeTheme = themeResult;
             applyTheme();
@@ -409,6 +432,7 @@
     function handlePipClose() {
       clearTimeout(pauseDebounceTimer);
       isPipActive = false;
+      stopPiPRenderLoop();
       // If closing PiP caused Safari to momentarily pause the main track in the background, auto-resume it!
       if (Date.now() - lastPlayingTimestamp < 1500) {
         setTimeout(() => {
@@ -423,6 +447,7 @@
     pipVideo.addEventListener('enterpictureinpicture', () => {
       clearTimeout(pauseDebounceTimer);
       isPipActive = true;
+      startPiPRenderLoop();
       drawPiPFrame();
     });
     pipVideo.addEventListener('leavepictureinpicture', handlePipClose);
@@ -431,6 +456,7 @@
       if (active) {
         clearTimeout(pauseDebounceTimer);
         isPipActive = true;
+        startPiPRenderLoop();
         drawPiPFrame();
       } else if (isPipActive) {
         handlePipClose();
@@ -465,7 +491,12 @@
     });
   }
 
-  function drawWrappedText(context, text, x, y, maxWidth, lineHeight) {
+  const wrappedTextCache = new Map();
+  function getWrappedLines(context, text, maxWidth) {
+    const key = `${context.font}_${maxWidth}_${text}`;
+    const cached = wrappedTextCache.get(key);
+    if (cached) return cached;
+
     // Robust word-wrap supporting both spaced text and non-spaced CJK characters
     const words = text.split(' ');
     let lines = [];
@@ -507,20 +538,39 @@
       lines[2] = lines[2].replace(/[.,;:!?\s]*$/, '…');
     }
 
-    const startY = y - ((lines.length - 1) * lineHeight) / 2;
-    lines.forEach((l, i) => {
-      context.fillText(l.trim(), x, startY + (i * lineHeight));
-    });
+    const trimmed = lines.map(l => l.trim());
+    if (wrappedTextCache.size > 200) wrappedTextCache.clear();
+    wrappedTextCache.set(key, trimmed);
+    return trimmed;
   }
 
+  function drawWrappedText(context, text, x, y, maxWidth, lineHeight) {
+    const lines = getWrappedLines(context, text, maxWidth);
+    const startY = y - ((lines.length - 1) * lineHeight) / 2;
+    for (let i = 0; i < lines.length; i++) {
+      context.fillText(lines[i], x, startY + (i * lineHeight));
+    }
+  }
+
+  const ellipsisCache = new Map();
   function truncateWithEllipsis(context, text, maxW) {
     if (!text) return '';
-    if (context.measureText(text).width <= maxW) return text;
-    let t = text;
-    while (t.length > 0 && context.measureText(t + '…').width > maxW) {
-      t = t.slice(0, -1);
+    const key = `${context.font}_${maxW}_${text}`;
+    const cached = ellipsisCache.get(key);
+    if (cached !== undefined) return cached;
+
+    let result = text;
+    if (context.measureText(text).width > maxW) {
+      let t = text;
+      while (t.length > 0 && context.measureText(t + '…').width > maxW) {
+        t = t.slice(0, -1);
+      }
+      result = t ? (t + '…') : '';
     }
-    return t ? (t + '…') : '';
+
+    if (ellipsisCache.size > 300) ellipsisCache.clear();
+    ellipsisCache.set(key, result);
+    return result;
   }
 
   // 5. PiP Frame Engine
@@ -740,26 +790,46 @@
 
   // 6. Battery-Optimized Dual-Engine Render Loop
   let lastDrawTime = 0;
-  function startRenderLoop() {
-    function render(now) {
-      // Only render continuous canvas frames when Picture-in-Picture is actively open
-      if (isPipActive) {
-        // Cap to 30fps matching canvas.captureStream(30) to eliminate wasted ProMotion 120Hz frames
-        if (!lastDrawTime || now - lastDrawTime >= 33) {
-          lastDrawTime = now;
+  let pipRafId = null;
+  let pipBgInterval = null;
+
+  function runPipRender(now) {
+    if (!isPipActive) {
+      pipRafId = null;
+      return;
+    }
+    // Cap to 30fps matching canvas.captureStream(30) to eliminate wasted ProMotion 120Hz frames
+    if (!lastDrawTime || now - lastDrawTime >= 33) {
+      lastDrawTime = now;
+      drawPiPFrame();
+    }
+    pipRafId = requestAnimationFrame(runPipRender);
+  }
+
+  function startPiPRenderLoop() {
+    if (!pipRafId && isPipActive) {
+      lastDrawTime = 0;
+      drawPiPFrame();
+      pipRafId = requestAnimationFrame(runPipRender);
+    }
+    if (!pipBgInterval && isPipActive) {
+      pipBgInterval = setInterval(() => {
+        if (isPipActive && document.hidden) {
           drawPiPFrame();
         }
-      }
-      requestAnimationFrame(render);
+      }, 75);
     }
-    requestAnimationFrame(render);
+  }
 
-    // Fallback interval for backgrounded Safari PWA with active PiP
-    setInterval(() => {
-      if (isPipActive && document.hidden) {
-        drawPiPFrame();
-      }
-    }, 75);
+  function stopPiPRenderLoop() {
+    if (pipRafId) {
+      cancelAnimationFrame(pipRafId);
+      pipRafId = null;
+    }
+    if (pipBgInterval) {
+      clearInterval(pipBgInterval);
+      pipBgInterval = null;
+    }
   }
 
   function triggerPiP() {
@@ -774,10 +844,12 @@
         pipVideo.webkitSetPresentationMode('inline');
       }
       isPipActive = false;
+      stopPiPRenderLoop();
       return;
     }
 
     isPipActive = true;
+    startPiPRenderLoop();
     if (typeof pipVideo.requestPictureInPicture === 'function') {
       pipVideo.requestPictureInPicture().catch(() => {
         if (typeof pipVideo.webkitSetPresentationMode === 'function') {
@@ -858,13 +930,16 @@
     const lyricsContainer = document.getElementById('ytm-tab-lyrics-container');
     if (!lyricsContainer) return;
 
-    if (currentTab === 'LYRICS') {
-      lyricsContainer.style.setProperty('display', 'flex', 'important');
+    const shouldShowLyrics = (currentTab === 'LYRICS');
+    const targetDisplay = shouldShowLyrics ? 'flex' : 'none';
+    if (lyricsContainer.style.display !== targetDisplay) {
+      lyricsContainer.style.setProperty('display', targetDisplay, 'important');
+    }
+
+    if (shouldShowLyrics) {
       if (previousTab !== 'LYRICS' && lastActiveIdx >= 0 && cachedDomRows[lastActiveIdx] && !isUserScrolling) {
         scrollLyricsToElement(cachedDomRows[lastActiveIdx], false);
       }
-    } else {
-      lyricsContainer.style.setProperty('display', 'none', 'important');
     }
   }
 
@@ -882,9 +957,9 @@
       // Un-disable Lyrics tab if YouTube Music natively disabled it
       if (lyricsTab.hasAttribute('disabled')) lyricsTab.removeAttribute('disabled');
       if (lyricsTab.getAttribute('aria-disabled') === 'true') lyricsTab.setAttribute('aria-disabled', 'false');
-      lyricsTab.style.pointerEvents = 'auto';
-      lyricsTab.style.cursor = 'pointer';
-      lyricsTab.style.opacity = '1';
+      if (lyricsTab.style.pointerEvents !== 'auto') lyricsTab.style.pointerEvents = 'auto';
+      if (lyricsTab.style.cursor !== 'pointer') lyricsTab.style.cursor = 'pointer';
+      if (lyricsTab.style.opacity !== '1') lyricsTab.style.opacity = '1';
 
       if (!lyricsTab.__ytmGlassBound) {
         lyricsTab.__ytmGlassBound = true;
@@ -1804,6 +1879,28 @@
         scrollContainer.addEventListener('touchmove', handleUserScroll, { passive: true });
       }
 
+      const lyricsList = lyricsContainer.querySelector('#ytm-lyrics-list');
+      if (lyricsList) {
+        lyricsList.addEventListener('click', (e) => {
+          const row = e.target.closest('.ytm-lrc-row');
+          if (!row) return;
+          const lineTime = parseFloat(row.getAttribute('data-time'));
+          if (isNaN(lineTime)) return;
+          const offsetSec = (parseInt(prefs.timeOffsetMs, 10) || 0) / 1000;
+          const targetTime = Math.max(0, lineTime - offsetSec);
+
+          const player = getYTMPlayer();
+          const video = getYTMVideo();
+
+          if (player && typeof player.seekTo === 'function') {
+            player.seekTo(targetTime, true);
+          } else if (video && !isNaN(targetTime)) {
+            video.currentTime = targetTime;
+          }
+          drawPiPFrame();
+        });
+      }
+
       // If lyrics are already available in memory, render them
       if (lyricsData.length > 0) {
         renderLyricsDOM();
@@ -1826,6 +1923,7 @@
       if (sPanel && mainPanel) {
         let lastObservedArtType = null; // Track 'video' vs 'image' to detect switches
         let syncDebounceTimer = null;
+        let lastPanelHeight = 0;
 
         const syncHeight = () => {
           // Use mainPanel height as the consistent reference — it's managed by
@@ -1833,7 +1931,8 @@
           // height regardless of whether the content is a square art or 16:9 video.
           const mainRect = mainPanel.getBoundingClientRect();
           const panelHeight = mainRect.height;
-          if (panelHeight > 100) {
+          if (panelHeight > 100 && Math.abs(panelHeight - lastPanelHeight) >= 0.5) {
+            lastPanelHeight = panelHeight;
             // Subtract bottom margin (12px) so panel doesn't touch the player bar
             const adjustedHeight = panelHeight - 12;
             sPanel.style.setProperty('max-height', `${adjustedHeight}px`, 'important');
@@ -1874,7 +1973,6 @@
         // Watch for DOM changes inside mainPanel (song-image ↔ video swap)
         const contentObserver = new MutationObserver(() => {
           checkContentSwitch();
-          debouncedSync();
         });
         contentObserver.observe(mainPanel, { childList: true, subtree: true });
 
@@ -1931,6 +2029,8 @@
     lyricsData = [];
     cachedDomRows = [];
     lastActiveIdx = -1;
+    wrappedTextCache.clear();
+    ellipsisCache.clear();
 
     const cleanTitle = cleanTrackTitle(rawTitle, rawArtist);
     const primaryArtist = getPrimaryArtist(rawArtist);
@@ -1977,8 +2077,8 @@
     renderSearchingState();
 
     const headers = {
-      'User-Agent': 'YTM-Glass/2.1.0 (Mac Safari PWA Userscript; https://github.com/ankrypht/ytm-glass)',
-      'Lrclib-Client': 'YTM-Glass/2.1.0'
+      'User-Agent': 'YTM-Glass/2.1.1 (Mac Safari PWA Userscript; https://github.com/ankrypht/ytm-glass)',
+      'Lrclib-Client': 'YTM-Glass/2.1.1'
     };
 
     // Step 1: Direct exact match (/api/get) without forcing duration
@@ -2222,24 +2322,7 @@
       </div>
     `).join('');
 
-    cachedDomRows = Array.from(list.querySelectorAll('.ytm-lrc-row'));
-    cachedDomRows.forEach(row => {
-      row.addEventListener('click', () => {
-        const lineTime = parseFloat(row.getAttribute('data-time'));
-        const offsetSec = (parseInt(prefs.timeOffsetMs, 10) || 0) / 1000;
-        const targetTime = Math.max(0, lineTime - offsetSec);
-
-        const player = getYTMPlayer();
-        const video = getYTMVideo();
-
-        if (player && typeof player.seekTo === 'function') {
-          player.seekTo(targetTime, true);
-        } else if (video && !isNaN(targetTime)) {
-          video.currentTime = targetTime;
-        }
-        drawPiPFrame();
-      });
-    });
+    cachedDomRows = Array.from(list.children);
   }
 
   // 10. Player Event Hooks & Dynamic Video Tracking
@@ -2274,14 +2357,12 @@
     return { title, artist, artwork, duration };
   }
 
-  let hookedVideo = null;
   function bindVideoEvents(video) {
     if (!video || video === hookedVideo) return;
     hookedVideo = video;
 
     video.addEventListener('timeupdate', () => {
       lastPlayingTimestamp = Date.now();
-      if (isPipActive) drawPiPFrame();
 
       if (!lyricsData.length || !cachedDomRows.length) return;
 
@@ -2380,7 +2461,6 @@
   // Boot Sequence
   initPiPCanvas();
   drawPiPFrame();
-  startRenderLoop();
   injectPlayerGlassUI();
   hookPlayer();
 })();
