@@ -90,7 +90,7 @@ Originally created as a standalone synced lyrics and Picture-in-Picture tool, **
 > 
 > Direct installs from raw GitHub links do not automatically register update hooks in the Userscripts extension, requiring manual re-downloads when new features are added.
 
-1. Go to the script page on **[Greasy Fork](https://greasyfork.org/en/scripts/596372-youtube-music-glass-synced-lyrics-pip)**.
+1. Go to the script page on **[Greasy Fork](https://greasyfork.org/en/scripts/596372-youtube-music-glass-apple-redesign-synced-lyrics-pip)**.
 2. Click the green **Install this script** button.
 3. The Userscripts extension prompt will appear. Click **Install**.
 4. Open [music.youtube.com](https://music.youtube.com) and play any track. The player screen will be styled with dynamic frosted glass and synced lyrics will be waiting in the **LYRICS** tab!
