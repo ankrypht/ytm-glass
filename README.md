@@ -1,8 +1,8 @@
 # YouTube Music Glass: Apple Redesign, Synced Lyrics & PiP 🎵✨
 
-[![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-Install-red.svg?logo=greasemonkey)](https://greasyfork.org/en/scripts/596372-youtube-music-glass-synced-lyrics-pip)
+[![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-Install-red.svg?logo=greasemonkey)](https://greasyfork.org/en/scripts/596372-youtube-music-glass-apple-redesign-synced-lyrics-pip)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Platform](<https://img.shields.io/badge/Platform-macOS%20(Safari)-black.svg?logo=apple>)](https://github.com/ankrypht/ytm-glass)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%28Safari%29-black.svg?logo=apple)](https://github.com/ankrypht/ytm-glass)
 [![Extension](https://img.shields.io/badge/Extension-Userscripts%20by%20Justin%20Wasack-orange.svg)](https://apps.apple.com/app/userscripts/id1463298887)
 [![Version](https://img.shields.io/badge/Version-2.1.1-blue.svg)](https://github.com/ankrypht/ytm-glass)
 
@@ -10,13 +10,41 @@ A complete **Apple Music-inspired frosted glass redesign**, dynamic ambient mesh
 
 ---
 
-## 🌟 What's New in v2.0
+## 📸 Preview & Showcase
 
-Originally created as a standalone synced lyrics and Picture-in-Picture tool, **v2.0 transforms YouTube Music into a full-fledged Apple Music desktop experience**:
+### 🎨 Apple Music-Style Frosted Glass Player & Synced Lyrics
+The player screen completely overhauled into an Apple Music desktop experience. Features real-time dynamic ambient mesh gradients derived from the active album artwork, a floating frosted glass side panel (`#side-panel`), pixel-perfect vertical alignment with the album artwork, and synchronized auto-scrolling lyrics with active glowing text directly inside YouTube Music's native **LYRICS** tab.
 
+[![YouTube Music Glass Player Screen & Synced Lyrics](https://raw.githubusercontent.com/ankrypht/ytm-glass/main/screenshots/player-screen-synced-lyrics.png)](https://raw.githubusercontent.com/ankrypht/ytm-glass/main/screenshots/player-screen-synced-lyrics.png)
+
+---
+
+### 🖼️ System-Wide Picture-in-Picture (PiP) Multitasking
+Multitask anywhere across macOS while keeping synchronized lyrics in view. The native WebKit Picture-in-Picture window streams a high-DPI dynamic canvas with real-time scrolling lyrics, glowing highlights, track metadata, and a live progress bar.
+
+[![macOS Desktop Picture-in-Picture Synced Lyrics](https://raw.githubusercontent.com/ankrypht/ytm-glass/main/screenshots/macos-desktop-pip.png)](https://raw.githubusercontent.com/ankrypht/ytm-glass/main/screenshots/macos-desktop-pip.png)
+
+---
+
+### 🎵 Canvas Picture-in-Picture Card (Detail View)
+A closer look at the dedicated 520×520 Canvas PiP interface: Apple system typography (`SF Pro`), smooth ambient background glow matching the album art palette, glowing active lyric line emphasis, and live playback time scrubber.
+
+<p align="center">
+  <a href="https://raw.githubusercontent.com/ankrypht/ytm-glass/main/screenshots/pip-synced-lyrics-widget.png">
+    <img src="https://raw.githubusercontent.com/ankrypht/ytm-glass/main/screenshots/pip-synced-lyrics-widget.png" alt="Picture-in-Picture Lyrics Widget" width="460" />
+  </a>
+</p>
+
+---
+
+## 🌟 What's New in v2.1 & v2.0
+
+Originally created as a standalone synced lyrics and Picture-in-Picture tool, **v2.0 transformed YouTube Music into a full-fledged Apple Music desktop experience**, with **v2.1 adding key performance and layout refinements**:
+
+- ⚡ **Battery & CPU Optimization (v2.1.1)**: Halts background canvas render loops and intervals when PiP is closed, eliminating ~500k idle timer wakes per hour on macOS Safari.
+- 📐 **Pixel-Perfect Alignment & Proportions (v2.1.0)**: Dynamic height synchronization between album art and side panel via a high-performance `ResizeObserver`. Top edges, bottom edges, and vertical centers align identically with zero video collisions on widescreen media.
 - 🎨 **Complete Player Screen Overhaul**: Real-time ambient mesh gradients extracted from active album artwork, soft glowing artwork halo lighting, and a floating frosted glass side panel (`#side-panel`).
 - 🪟 **Home Screen & Navigation Glass Polish**: Edge-to-edge frosted glass top navigation bar (`ytmusic-nav-bar`), sleek blurred category pill chips, translucent left sidebar guide, and rounded album artwork cards.
-- 📐 **Pixel-Perfect Alignment & Proportions**: Dynamic height synchronization between album art and side panel via a high-performance `ResizeObserver`. Top edges, bottom edges, and vertical centers align identically with zero video collisions on widescreen media.
 - 🎵 **Integrated Native Tab Lyrics**: Synchronized, clickable, auto-scrolling lyrics directly inside YouTube Music's native **LYRICS** tab—no intrusive floating overlays.
 - 🚫 **Edge-to-Edge Fluidity**: Suppresses native right-side scrollbar gutters for seamless, edge-to-edge glass visuals across both regular Safari windows and standalone PWA desktop apps.
 
@@ -47,9 +75,9 @@ Originally created as a standalone synced lyrics and Picture-in-Picture tool, **
   - Automatically samples the playing song's album artwork via cross-origin blob extraction.
   - Calculates dominant saturation and ambient dark-tone luminance to build custom gradients, ambient backdrop glow, and accents that match each track.
 
-- 🍎 **Native Apple Typography**
+- 🍎 **Native Apple Typography & Battery Efficiency**
   - Designed natively around Apple system typefaces: `SF Pro Display`, `SF Pro Text`, `SF Pro Rounded`, and `SF Mono`.
-  - Battery-conscious render loop capped to 30fps to avoid wasting energy on 120Hz ProMotion displays.
+  - Battery-conscious render loop: pauses canvas rendering completely when PiP is closed, capped to 30fps during active playback to preserve energy on 120Hz ProMotion displays.
 
 - ⏱️ **Synchronized LRCLIB Integration**
   - Queries [LRCLIB](https://lrclib.net/) for synchronized lyrics with multi-timestamp matching and millisecond accuracy.
@@ -160,7 +188,7 @@ Click the gear icon (**⚙**) on the lyrics tab header to customize:
 
 ## 📄 License
 
-This project is licensed under the **GNU General Public License v3.0** (GPL-3.0). See the [LICENSE](file:///Users/ankushsarkar/Programming/YTM/LICENSE) file for details.
+This project is licensed under the **GNU General Public License v3.0** (GPL-3.0). See the [LICENSE](https://github.com/ankrypht/ytm-glass/blob/main/LICENSE) file for details.
 
 ---
 
