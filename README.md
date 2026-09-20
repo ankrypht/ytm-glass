@@ -13,6 +13,7 @@ A complete **Apple Music-inspired frosted glass redesign**, dynamic ambient mesh
 ## 📸 Preview & Showcase
 
 ### 🎨 Apple Music-Style Frosted Glass Player & Synced Lyrics
+
 The player screen completely overhauled into an Apple Music desktop experience. Features real-time dynamic ambient mesh gradients derived from the active album artwork, a floating frosted glass side panel (`#side-panel`), pixel-perfect vertical alignment with the album artwork, and synchronized auto-scrolling lyrics with active glowing text directly inside YouTube Music's native **LYRICS** tab.
 
 [![YouTube Music Glass Player Screen & Synced Lyrics](https://raw.githubusercontent.com/ankrypht/ytm-glass/main/screenshots/player-screen-synced-lyrics.png)](https://raw.githubusercontent.com/ankrypht/ytm-glass/main/screenshots/player-screen-synced-lyrics.png)
@@ -20,6 +21,7 @@ The player screen completely overhauled into an Apple Music desktop experience. 
 ---
 
 ### 🖼️ System-Wide Picture-in-Picture (PiP) Multitasking
+
 Multitask anywhere across macOS while keeping synchronized lyrics in view. The native WebKit Picture-in-Picture window streams a high-DPI dynamic canvas with real-time scrolling lyrics, glowing highlights, track metadata, and a live progress bar.
 
 [![macOS Desktop Picture-in-Picture Synced Lyrics](https://raw.githubusercontent.com/ankrypht/ytm-glass/main/screenshots/macos-desktop-pip.png)](https://raw.githubusercontent.com/ankrypht/ytm-glass/main/screenshots/macos-desktop-pip.png)
@@ -27,6 +29,7 @@ Multitask anywhere across macOS while keeping synchronized lyrics in view. The n
 ---
 
 ### 🎵 Canvas Picture-in-Picture Card (Detail View)
+
 A closer look at the dedicated 520×520 Canvas PiP interface: Apple system typography (`SF Pro`), smooth ambient background glow matching the album art palette, glowing active lyric line emphasis, and live playback time scrubber.
 
 <p align="center">
@@ -34,19 +37,6 @@ A closer look at the dedicated 520×520 Canvas PiP interface: Apple system typog
     <img src="https://raw.githubusercontent.com/ankrypht/ytm-glass/main/screenshots/pip-synced-lyrics-widget.png" alt="Picture-in-Picture Lyrics Widget" width="460" />
   </a>
 </p>
-
----
-
-## 🌟 What's New in v2.1 & v2.0
-
-Originally created as a standalone synced lyrics and Picture-in-Picture tool, **v2.0 transformed YouTube Music into a full-fledged Apple Music desktop experience**, with **v2.1 adding key performance and layout refinements**:
-
-- ⚡ **Battery & CPU Optimization (v2.1.1)**: Halts background canvas render loops and intervals when PiP is closed, eliminating ~500k idle timer wakes per hour on macOS Safari.
-- 📐 **Pixel-Perfect Alignment & Proportions (v2.1.0)**: Dynamic height synchronization between album art and side panel via a high-performance `ResizeObserver`. Top edges, bottom edges, and vertical centers align identically with zero video collisions on widescreen media.
-- 🎨 **Complete Player Screen Overhaul**: Real-time ambient mesh gradients extracted from active album artwork, soft glowing artwork halo lighting, and a floating frosted glass side panel (`#side-panel`).
-- 🪟 **Home Screen & Navigation Glass Polish**: Edge-to-edge frosted glass top navigation bar (`ytmusic-nav-bar`), sleek blurred category pill chips, translucent left sidebar guide, and rounded album artwork cards.
-- 🎵 **Integrated Native Tab Lyrics**: Synchronized, clickable, auto-scrolling lyrics directly inside YouTube Music's native **LYRICS** tab—no intrusive floating overlays.
-- 🚫 **Edge-to-Edge Fluidity**: Suppresses native right-side scrollbar gutters for seamless, edge-to-edge glass visuals across both regular Safari windows and standalone PWA desktop apps.
 
 ---
 
