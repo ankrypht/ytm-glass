@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Music Glass: Apple Redesign, Synced Lyrics & PiP
 // @namespace    https://github.com/ankrypht/ytm-glass
-// @version      2.1.1
+// @version      2.1.2
 // @description  Apple Music-inspired frosted glass redesign, dynamic ambient mesh glow, synchronized lyrics & native Picture-in-Picture for YouTube Music on Safari (macOS).
 // @author       ankrypht
 // @license      GPL-3.0-or-later
@@ -423,7 +423,7 @@
     ctx.fillRect(0, 0, 520, 520);
 
     if (typeof canvas.captureStream === 'function') {
-      const stream = canvas.captureStream(30);
+      const stream = canvas.captureStream(60);
       pipVideo.srcObject = stream;
     }
 
@@ -788,36 +788,86 @@
     ctx.fillText(formatTime(duration), barX + barW, barY + 22);
   }
 
-  // 6. Battery-Optimized Dual-Engine Render Loop
+  // 6. Battery-Optimized 60 FPS Dual-Engine Render Loop (Unthrottled Background Engine)
   let lastDrawTime = 0;
   let pipRafId = null;
   let pipBgInterval = null;
+  let pipWorker = null;
+
+  function onRenderTick(now) {
+    if (!isPipActive) return;
+    const timestamp = typeof now === 'number' ? now : performance.now();
+    // Cap to 60fps (~16ms) to eliminate wasted ProMotion 120Hz frames while maintaining buttery smoothness
+    if (!lastDrawTime || (timestamp - lastDrawTime) >= 16) {
+      lastDrawTime = timestamp;
+      drawPiPFrame();
+    }
+  }
 
   function runPipRender(now) {
     if (!isPipActive) {
       pipRafId = null;
       return;
     }
-    // Cap to 30fps matching canvas.captureStream(30) to eliminate wasted ProMotion 120Hz frames
-    if (!lastDrawTime || now - lastDrawTime >= 33) {
-      lastDrawTime = now;
-      drawPiPFrame();
-    }
+    onRenderTick(now);
     pipRafId = requestAnimationFrame(runPipRender);
   }
 
+  function initPipWorker() {
+    if (pipWorker !== null) return pipWorker;
+    try {
+      const blob = new Blob([`
+        let timer = null;
+        self.onmessage = function(e) {
+          if (e.data === 'start') {
+            if (!timer) {
+              timer = setInterval(function() {
+                self.postMessage(1);
+              }, 16);
+            }
+          } else if (e.data === 'stop') {
+            if (timer) {
+              clearInterval(timer);
+              timer = null;
+            }
+          }
+        };
+      `], { type: 'application/javascript' });
+      const blobUrl = URL.createObjectURL(blob);
+      const worker = new Worker(blobUrl);
+      worker.onmessage = () => {
+        if (isPipActive) {
+          onRenderTick(performance.now());
+        }
+      };
+      pipWorker = worker;
+    } catch (e) {
+      pipWorker = false;
+    }
+    return pipWorker;
+  }
+
   function startPiPRenderLoop() {
-    if (!pipRafId && isPipActive) {
-      lastDrawTime = 0;
-      drawPiPFrame();
+    if (!isPipActive) return;
+    lastDrawTime = 0;
+    drawPiPFrame();
+
+    if (!pipRafId) {
       pipRafId = requestAnimationFrame(runPipRender);
     }
-    if (!pipBgInterval && isPipActive) {
+
+    const worker = initPipWorker();
+    if (worker) {
+      worker.postMessage('start');
+    }
+
+    if (!pipBgInterval) {
+      // High-frequency interval ensuring 60 FPS rendering when PWA window is unfocused or backgrounded
       pipBgInterval = setInterval(() => {
-        if (isPipActive && document.hidden) {
-          drawPiPFrame();
+        if (isPipActive) {
+          onRenderTick(performance.now());
         }
-      }, 75);
+      }, 16);
     }
   }
 
@@ -829,6 +879,9 @@
     if (pipBgInterval) {
       clearInterval(pipBgInterval);
       pipBgInterval = null;
+    }
+    if (pipWorker) {
+      pipWorker.postMessage('stop');
     }
   }
 
@@ -1297,6 +1350,7 @@
       }
       #ytm-ui-title.is-marquee {
         animation: ytmMarquee 8s ease-in-out infinite alternate;
+        will-change: transform;
       }
       @keyframes ytmMarquee {
         0%, 20% { transform: translateX(0); }
@@ -2077,8 +2131,8 @@
     renderSearchingState();
 
     const headers = {
-      'User-Agent': 'YTM-Glass/2.1.1 (Mac Safari PWA Userscript; https://github.com/ankrypht/ytm-glass)',
-      'Lrclib-Client': 'YTM-Glass/2.1.1'
+      'User-Agent': 'YTM-Glass/2.1.2 (Mac Safari PWA Userscript; https://github.com/ankrypht/ytm-glass)',
+      'Lrclib-Client': 'YTM-Glass/2.1.2'
     };
 
     // Step 1: Direct exact match (/api/get) without forcing duration
@@ -2364,6 +2418,10 @@
     video.addEventListener('timeupdate', () => {
       lastPlayingTimestamp = Date.now();
 
+      if (isPipActive) {
+        onRenderTick(performance.now());
+      }
+
       if (!lyricsData.length || !cachedDomRows.length) return;
 
       const activeIdx = getActiveLyricIndex(video.currentTime);
@@ -2381,6 +2439,19 @@
         }
       }
       lastActiveIdx = activeIdx;
+
+      // Immediately render frame on active lyric transition to eliminate any lyrics lag
+      if (isPipActive) {
+        lastDrawTime = performance.now();
+        drawPiPFrame();
+      }
+    });
+
+    video.addEventListener('seeked', () => {
+      if (isPipActive) {
+        lastDrawTime = performance.now();
+        drawPiPFrame();
+      }
     });
 
     video.addEventListener('pause', () => {

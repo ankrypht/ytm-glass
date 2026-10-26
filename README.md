@@ -4,7 +4,7 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%28Safari%29-black.svg?logo=apple)](https://github.com/ankrypht/ytm-glass)
 [![Extension](https://img.shields.io/badge/Extension-Userscripts%20by%20Justin%20Wasack-orange.svg)](https://apps.apple.com/app/userscripts/id1463298887)
-[![Version](https://img.shields.io/badge/Version-2.1.1-blue.svg)](https://github.com/ankrypht/ytm-glass)
+[![Version](https://img.shields.io/badge/Version-2.1.2-blue.svg)](https://github.com/ankrypht/ytm-glass)
 
 A complete **Apple Music-inspired frosted glass redesign**, dynamic ambient mesh backdrop, synchronized lyrics, and **Canvas Picture-in-Picture (PiP)** userscript built specifically for **macOS** with **Safari** (and Safari Web Apps / PWA) using the **[Userscripts](https://apps.apple.com/app/userscripts/id1463298887)** extension by Justin Wasack.
 
@@ -67,7 +67,7 @@ A closer look at the dedicated 520×520 Canvas PiP interface: Apple system typog
 
 - 🍎 **Native Apple Typography & Battery Efficiency**
   - Designed natively around Apple system typefaces: `SF Pro Display`, `SF Pro Text`, `SF Pro Rounded`, and `SF Mono`.
-  - Battery-conscious render loop: pauses canvas rendering completely when PiP is closed, capped to 30fps during active playback to preserve energy on 120Hz ProMotion displays.
+  - Unthrottled 60 FPS multi-tier render engine: hardware-synced `requestAnimationFrame` and background Web Worker / high-precision intervals keep moving title marquees and floating lyrics silky smooth even when the PWA is unfocused or backgrounded; pauses canvas rendering completely when PiP is closed (0% idle CPU).
 
 - ⏱️ **Synchronized LRCLIB Integration**
   - Queries [LRCLIB](https://lrclib.net/) for synchronized lyrics with multi-timestamp matching and millisecond accuracy.
