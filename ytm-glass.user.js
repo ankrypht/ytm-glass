@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Music Glass: Apple Redesign, Synced Lyrics & PiP
 // @namespace    https://github.com/ankrypht/ytm-glass
-// @version      2.1.2
+// @version      2.1.3
 // @description  Apple Music-inspired frosted glass redesign, dynamic ambient mesh glow, synchronized lyrics & native Picture-in-Picture for YouTube Music on Safari (macOS).
 // @author       ankrypht
 // @license      GPL-3.0-or-later
@@ -66,6 +66,8 @@
   let pipVideo = null;
   let canvas = null;
   let ctx = null;
+  let canvasStream = null;
+  let pipCanvasTrack = null;
   let isPipActive = false;
   let lastActiveIdx = -1;
   let cachedDomRows = [];
@@ -176,12 +178,15 @@
   }
 
   function getYTMVideo() {
+    const mainVideo = document.querySelector('video.html5-main-video');
+    if (mainVideo && mainVideo !== pipVideo && mainVideo.isConnected) {
+      return mainVideo;
+    }
     if (hookedVideo && hookedVideo.isConnected && hookedVideo !== pipVideo) {
       return hookedVideo;
     }
     const videos = Array.from(document.querySelectorAll('video'));
-    return videos.find(v => v !== pipVideo && v.classList.contains('html5-main-video')) ||
-           videos.find(v => v !== pipVideo) || null;
+    return videos.find(v => v !== pipVideo) || null;
   }
 
   function getYTMPlayer() {
@@ -405,6 +410,10 @@
     canvas.id = 'ytm-pip-stream-canvas';
     canvas.width = 520;
     canvas.height = 520;
+    // Critical for Safari: must be attached to the active document layout tree
+    // so WebKit maintains an active hardware composition surface for captureStream()
+    canvas.style.cssText = 'position: fixed; left: -9999px; top: 0; width: 520px; height: 520px; pointer-events: none; z-index: -9999;';
+    (document.body || document.documentElement).appendChild(canvas);
     ctx = canvas.getContext('2d');
 
     pipVideo = document.createElement('video');
@@ -414,17 +423,22 @@
     pipVideo.autoplay = true;
 
     pipVideo.style.cssText = `
-      position: fixed; bottom: 0; left: 0; width: 520px; height: 520px;
-      aspect-ratio: 1 / 1; opacity: 0.001; pointer-events: none; z-index: -1;
+      position: fixed; left: -9999px; top: 0; width: 520px; height: 520px;
+      pointer-events: none; z-index: -9999;
     `;
-    document.body.appendChild(pipVideo);
+    (document.body || document.documentElement).appendChild(pipVideo);
 
     ctx.fillStyle = '#08070e';
     ctx.fillRect(0, 0, 520, 520);
 
-    if (typeof canvas.captureStream === 'function') {
-      const stream = canvas.captureStream(60);
-      pipVideo.srcObject = stream;
+    const captureStreamFn = canvas.captureStream || canvas.webkitCaptureStream;
+    if (typeof captureStreamFn === 'function') {
+      canvasStream = captureStreamFn.call(canvas, 60);
+      pipVideo.srcObject = canvasStream;
+      const tracks = canvasStream.getVideoTracks();
+      if (tracks && tracks.length > 0) {
+        pipCanvasTrack = tracks[0];
+      }
     }
 
     let pauseDebounceTimer = null;
@@ -786,19 +800,81 @@
     ctx.fillText(formatTime(currentTime), barX, barY + 22);
     ctx.textAlign = 'right';
     ctx.fillText(formatTime(duration), barX + barW, barY + 22);
+
+    // Direct hardware frame dispatch: push newly rendered frame directly to PiP stream
+    if (pipCanvasTrack && typeof pipCanvasTrack.requestFrame === 'function') {
+      pipCanvasTrack.requestFrame();
+    }
   }
 
-  // 6. Battery-Optimized 60 FPS Dual-Engine Render Loop (Unthrottled Background Engine)
+  // 6. Battery-Optimized 60 FPS Multi-Tier Render Engine (Web Audio Hardware Clock for Background/Unfocused PWA)
   let lastDrawTime = 0;
   let pipRafId = null;
   let pipBgInterval = null;
-  let pipWorker = null;
+  let pipAudioCtx = null;
+  let pipScriptNode = null;
+  let pipSilentGain = null;
+  let pipOscillator = null;
+
+  function initPipAudioClock() {
+    if (pipAudioCtx) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      pipAudioCtx = new AudioCtx();
+
+      // bufferSize 256 samples fires onaudioprocess every ~5.3ms (48kHz) to ~5.8ms (44.1kHz)
+      // Driven by macOS CoreAudio hardware thread, completely immune to Safari DOM timer throttling in background/unfocused windows
+      pipScriptNode = pipAudioCtx.createScriptProcessor(256, 1, 1);
+
+      pipSilentGain = pipAudioCtx.createGain();
+      pipSilentGain.gain.setValueAtTime(0, pipAudioCtx.currentTime);
+
+      pipOscillator = pipAudioCtx.createOscillator();
+      pipOscillator.frequency.setValueAtTime(440, pipAudioCtx.currentTime);
+
+      pipScriptNode.onaudioprocess = (e) => {
+        // Output mathematical silence (0 volume) across all channels to prevent any audio interference
+        const numChannels = e.outputBuffer.numberOfChannels;
+        for (let i = 0; i < numChannels; i++) {
+          e.outputBuffer.getChannelData(i).fill(0);
+        }
+
+        if (isPipActive) {
+          onRenderTick(performance.now());
+        }
+      };
+
+      pipOscillator.connect(pipScriptNode);
+      pipScriptNode.connect(pipSilentGain);
+      pipSilentGain.connect(pipAudioCtx.destination);
+      pipOscillator.start();
+    } catch (e) {
+      pipAudioCtx = null;
+      pipScriptNode = null;
+      pipSilentGain = null;
+      pipOscillator = null;
+    }
+  }
+
+  function startPipAudioClock() {
+    initPipAudioClock();
+    if (pipAudioCtx && pipAudioCtx.state !== 'running') {
+      pipAudioCtx.resume().catch(() => {});
+    }
+  }
+
+  function stopPipAudioClock() {
+    if (pipAudioCtx && pipAudioCtx.state === 'running') {
+      pipAudioCtx.suspend().catch(() => {});
+    }
+  }
 
   function onRenderTick(now) {
     if (!isPipActive) return;
     const timestamp = typeof now === 'number' ? now : performance.now();
-    // Cap to 60fps (~16ms) to eliminate wasted ProMotion 120Hz frames while maintaining buttery smoothness
-    if (!lastDrawTime || (timestamp - lastDrawTime) >= 16) {
+    // 14ms threshold (~60fps ceiling) prevents dropping legitimate 60Hz frames (~16.6ms) while eliminating ProMotion 120Hz excess
+    if (!lastDrawTime || (timestamp - lastDrawTime) >= 14) {
       lastDrawTime = timestamp;
       drawPiPFrame();
     }
@@ -813,40 +889,6 @@
     pipRafId = requestAnimationFrame(runPipRender);
   }
 
-  function initPipWorker() {
-    if (pipWorker !== null) return pipWorker;
-    try {
-      const blob = new Blob([`
-        let timer = null;
-        self.onmessage = function(e) {
-          if (e.data === 'start') {
-            if (!timer) {
-              timer = setInterval(function() {
-                self.postMessage(1);
-              }, 16);
-            }
-          } else if (e.data === 'stop') {
-            if (timer) {
-              clearInterval(timer);
-              timer = null;
-            }
-          }
-        };
-      `], { type: 'application/javascript' });
-      const blobUrl = URL.createObjectURL(blob);
-      const worker = new Worker(blobUrl);
-      worker.onmessage = () => {
-        if (isPipActive) {
-          onRenderTick(performance.now());
-        }
-      };
-      pipWorker = worker;
-    } catch (e) {
-      pipWorker = false;
-    }
-    return pipWorker;
-  }
-
   function startPiPRenderLoop() {
     if (!isPipActive) return;
     lastDrawTime = 0;
@@ -856,13 +898,10 @@
       pipRafId = requestAnimationFrame(runPipRender);
     }
 
-    const worker = initPipWorker();
-    if (worker) {
-      worker.postMessage('start');
-    }
+    startPipAudioClock();
 
     if (!pipBgInterval) {
-      // High-frequency interval ensuring 60 FPS rendering when PWA window is unfocused or backgrounded
+      // Periodic fallback ensuring regular ticks
       pipBgInterval = setInterval(() => {
         if (isPipActive) {
           onRenderTick(performance.now());
@@ -880,13 +919,21 @@
       clearInterval(pipBgInterval);
       pipBgInterval = null;
     }
-    if (pipWorker) {
-      pipWorker.postMessage('stop');
-    }
+    stopPipAudioClock();
   }
+
+  // Ensure AudioContext is seamlessly unlocked on user interactions
+  ['click', 'keydown', 'touchstart'].forEach(evt => {
+    window.addEventListener(evt, () => {
+      if (pipAudioCtx && pipAudioCtx.state === 'suspended' && isPipActive) {
+        pipAudioCtx.resume().catch(() => {});
+      }
+    }, { passive: true, capture: true });
+  });
 
   function triggerPiP() {
     if (!pipVideo) initPiPCanvas();
+    startPipAudioClock();
     drawPiPFrame();
     pipVideo.play().catch(() => {});
 
@@ -943,9 +990,10 @@
     const relativeTop = rowRect.top - containerRect.top;
     const targetScrollTop = container.scrollTop + relativeTop - (container.clientHeight / 2) + (rowRect.height / 2);
 
+    const isSmooth = smooth && !document.hidden;
     container.scrollTo({
       top: Math.max(0, targetScrollTop),
-      behavior: smooth ? 'smooth' : 'auto'
+      behavior: isSmooth ? 'smooth' : 'auto'
     });
   }
 
@@ -1351,6 +1399,10 @@
       #ytm-ui-title.is-marquee {
         animation: ytmMarquee 8s ease-in-out infinite alternate;
         will-change: transform;
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
       }
       @keyframes ytmMarquee {
         0%, 20% { transform: translateX(0); }
@@ -1376,17 +1428,29 @@
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid rgba(255, 255, 255, 0.12);
         color: #eee;
-        padding: 6px 12px;
+        height: 32px;
+        padding: 0 12px;
         border-radius: 10px;
-        font-size: 11px;
+        font-size: 11.5px;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s ease;
         display: inline-flex;
         align-items: center;
-        gap: 5px;
+        justify-content: center;
+        gap: 6px;
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
+        box-sizing: border-box;
+      }
+      #ytm-actions button .ytm-btn-svg {
+        display: block;
+        flex-shrink: 0;
+        pointer-events: none;
+      }
+      #ytm-actions button#ytm-gear-btn {
+        width: 32px;
+        padding: 0;
       }
       #ytm-actions button:hover {
         background: rgba(255, 255, 255, 0.18);
@@ -1398,6 +1462,10 @@
         border-color: var(--ytm-accent);
         color: #fff;
         box-shadow: 0 0 14px var(--ytm-accent);
+      }
+      #ytm-actions button#ytm-gear-btn:hover .ytm-btn-svg {
+        transform: rotate(30deg);
+        transition: transform 0.3s ease;
       }
 
       /* 7. Synced Lyrics Scrolling View (Identical to Original Perfect Look) */
@@ -1879,8 +1947,21 @@
             <div id="ytm-ui-artist">${currentSong.artist || 'YouTube Music'}</div>
           </div>
           <div id="ytm-actions">
-            <button id="ytm-pip-btn" type="button" title="Pop out over other apps (macOS PiP)">⤢ Pop Out</button>
-            <button id="ytm-gear-btn" type="button" title="Settings">⚙</button>
+            <button id="ytm-pip-btn" type="button" title="Pop out over other apps (macOS PiP)">
+              <svg class="ytm-btn-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <polyline points="9 21 3 21 3 15"></polyline>
+                <line x1="21" y1="3" x2="14" y2="10"></line>
+                <line x1="3" y1="21" x2="10" y2="14"></line>
+              </svg>
+              <span>Pop Out</span>
+            </button>
+            <button id="ytm-gear-btn" type="button" title="Settings">
+              <svg class="ytm-btn-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </button>
           </div>
         </div>
         <div id="ytm-lyrics-scroll-container">
@@ -2086,6 +2167,16 @@
     wrappedTextCache.clear();
     ellipsisCache.clear();
 
+    if (rateLimitTimer) {
+      clearInterval(rateLimitTimer);
+      rateLimitTimer = null;
+    }
+
+    isUserScrolling = false;
+    clearTimeout(userScrollTimeout);
+    const jumpBtn = document.getElementById('ytm-jump-active-btn');
+    if (jumpBtn) jumpBtn.classList.remove('visible');
+
     const cleanTitle = cleanTrackTitle(rawTitle, rawArtist);
     const primaryArtist = getPrimaryArtist(rawArtist);
     const durSec = (duration && isFinite(duration) && duration > 0) ? Math.round(duration) : 0;
@@ -2131,8 +2222,8 @@
     renderSearchingState();
 
     const headers = {
-      'User-Agent': 'YTM-Glass/2.1.2 (Mac Safari PWA Userscript; https://github.com/ankrypht/ytm-glass)',
-      'Lrclib-Client': 'YTM-Glass/2.1.2'
+      'User-Agent': 'YTM-Glass/2.1.3 (Mac Safari PWA Userscript; https://github.com/ankrypht/ytm-glass)',
+      'Lrclib-Client': 'YTM-Glass/2.1.3'
     };
 
     // Step 1: Direct exact match (/api/get) without forcing duration
@@ -2289,13 +2380,18 @@
     if (rateLimitTimer) clearInterval(rateLimitTimer);
 
     rateLimitTimer = setInterval(() => {
+      // If user navigated or track changed during cooldown, abort the stale retry loop
+      if (currentSong.title !== rawTitle || currentSong.artist !== rawArtist) {
+        clearInterval(rateLimitTimer);
+        rateLimitTimer = null;
+        return;
+      }
+
       const remaining = Math.ceil((rateLimitUntil - Date.now()) / 1000);
       if (remaining <= 0) {
         clearInterval(rateLimitTimer);
         rateLimitTimer = null;
-        if (currentSong.title === rawTitle && currentSong.artist === rawArtist) {
-          fetchLyrics(rawTitle, rawArtist, duration);
-        }
+        fetchLyrics(rawTitle, rawArtist, duration);
       } else {
         renderRateLimitedState();
         drawPiPFrame();
@@ -2463,8 +2559,12 @@
 
     video.addEventListener('play', () => {
       lastPlayingTimestamp = Date.now();
-      if (isPipActive && pipVideo && pipVideo.paused) {
-        pipVideo.play().catch(() => {});
+      if (isPipActive) {
+        startPipAudioClock();
+        lastDrawTime = performance.now();
+        if (pipVideo && pipVideo.paused) {
+          pipVideo.play().catch(() => {});
+        }
       }
       drawPiPFrame();
     });
